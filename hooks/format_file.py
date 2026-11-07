@@ -33,20 +33,38 @@ def find_up(start, rel):
         d = os.path.dirname(d)
 
 
+EXTS = (".exe", ".cmd", ".bat", "") if os.name == "nt" else ("",)
+
+
+def local_tool(start, folder, name):
+    """A tool installed in the project, e.g. node_modules/.bin/prettier (prettier.cmd on Windows)."""
+    for ext in EXTS:
+        found = find_up(start, os.path.join(folder, name + ext))
+        if found:
+            return found
+    return None
+
+
 def tool(name, start):
-    local = (find_up(start, os.path.join(".venv", "bin", name))
-             or find_up(start, os.path.join("node_modules", ".bin", name)))
-    return local or shutil.which(name)
+    for folder in (os.path.join(".venv", "bin"), os.path.join(".venv", "Scripts"), os.path.join("node_modules", ".bin")):
+        found = local_tool(start, folder, name)
+        if found:
+            return found
+    return shutil.which(name)
+
+
+def node_tool(start, name):
+    return local_tool(start, os.path.join("node_modules", ".bin"), name)
 
 
 def formatter_for(path):
     ext = os.path.splitext(path)[1].lower()
     here = os.path.dirname(path)
     if ext in PRETTIER_EXT:
-        p = find_up(here, os.path.join("node_modules", ".bin", "prettier"))
+        p = node_tool(here, "prettier")
         if p:
             return [p, "--write", "--log-level", "warn", path]
-        b = find_up(here, os.path.join("node_modules", ".bin", "biome"))
+        b = node_tool(here, "biome")
         if b and ext in {".js", ".jsx", ".ts", ".tsx", ".json", ".css"}:
             return [b, "format", "--write", path]
     if ext == ".py":
@@ -70,10 +88,10 @@ def linter_for(path):
     ext = os.path.splitext(path)[1].lower()
     here = os.path.dirname(path)
     if ext in JS_EXT:
-        e = find_up(here, os.path.join("node_modules", ".bin", "eslint"))
+        e = node_tool(here, "eslint")
         if e and any(find_up(here, c) for c in ESLINT_CONFIGS):
             return [e, path]
-        b = find_up(here, os.path.join("node_modules", ".bin", "biome"))
+        b = node_tool(here, "biome")
         if b:
             return [b, "lint", path]
     if ext == ".py":

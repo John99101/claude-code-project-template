@@ -34,9 +34,14 @@ If the arguments contain `--defaults`, don't ask any questions and don't wait fo
 
 If both markers exist, ask which to do first. Device first is usually better because its answers feed project mode. With `--defaults`, do project mode.
 
-**Repo created with "Use this template"?** If the project root has `install.sh` and `rule-packs/` but no `.claude/cct/source.json`, it's a raw copy of the kit, including the kit's own tests, CI, docs and license. Before anything else, show the user the output of `bash install.sh --adopt --dry-run` and, once they agree, run `bash install.sh --adopt`. It turns the copy into a normal install (language rules into `.claude/cct/`, a manifest for updates and uninstall) and removes the kit's development files. With `--defaults`, run it without asking.
+**Python command.** On macOS and Linux it's `python3`. On Windows, use whichever of `python3`, `py -3` or `python` works (check with `<cmd> --version`). Below, `python3` means that command.
 
-**Running as the `cct` plugin** (you were invoked as `/cct:setup`)? Then there's no installer: device mode writes `~/.claude/CLAUDE.md`, `~/.claude/cct.json` and preferences as usual, and project mode creates the project's `CLAUDE.md` and `.claude/rules/` by copying the templates from the plugin (`${CLAUDE_PLUGIN_ROOT}/CLAUDE.md`, `${CLAUDE_PLUGIN_ROOT}/.claude/rules/`). Don't copy skills, agents or hooks into the project; the plugin provides them. Plugins can't set a status line, so skip that question.
+**Repo created with "Use this template"?** If the project root has `install.py` and `rule-packs/` but no `.claude/cct/source.json`, it's a raw copy of the kit, including the kit's own tests, CI, docs and license. Before anything else, show the user the output of `python3 install.py --adopt --dry-run` and, once they agree, run `python3 install.py --adopt`. It turns the copy into a normal install (skills, rules and hooks into `.claude/`, a manifest for updates and uninstall) and removes the kit's development files. Then tell them to restart Claude Code and run `/setup` again, because the skills and hooks it just installed load at session start. With `--defaults`, run it without asking.
+
+**Running as the `cct` plugin** (you were invoked as `/cct:setup`)? Then there's no installer:
+- Device mode writes `~/.claude/CLAUDE.md`, `~/.claude/cct.json` and preferences as usual.
+- Project mode creates the project's `CLAUDE.md` from `${CLAUDE_PLUGIN_ROOT}/templates/CLAUDE.project.md` and its `.claude/rules/` from `${CLAUDE_PLUGIN_ROOT}/rules/`. Don't copy skills, agents or hooks into the project; the plugin provides them.
+- **Status line:** plugins can't set one directly. If the user wants it (ask once, in device mode or the first project), run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/enable_statusline.py" "${CLAUDE_PLUGIN_DATA}"`. It copies the status line into the plugin's data folder, which survives updates, and points `~/.claude/settings.json` at it. It never replaces a status line of the user's own; exit code 3 means one exists, so ask before re-running with `--force`. To turn it off: add `--disable`.
 
 ## 1. Load what's known
 
@@ -49,6 +54,7 @@ The kit's extra files are `rule-packs/` (ready-made language rules) and `CLAUDE.
 1. `.claude/cct/` (project install)
 2. `~/.claude/cct/` (device install)
 3. `${CLAUDE_PLUGIN_ROOT}/rule-packs/` and `${CLAUDE_PLUGIN_ROOT}/templates/CLAUDE.package.md` (plugin install; if that path still starts with `${`, this isn't the plugin)
+4. `rule-packs/` and `templates/CLAUDE.package.md` in the project root (a "Use this template" copy you haven't adopted yet)
 
 Below, `.claude/cct/` means whichever location you found.
 

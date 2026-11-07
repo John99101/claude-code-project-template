@@ -27,7 +27,32 @@ def is_template_source(proj):
     return SOURCE_REPO in url
 
 
+def refresh_plugin_statusline():
+    """Plugins can't set a status line, so /cct:setup copies it into the plugin's data folder (which survives
+    updates) and points settings.json there. Keep that copy current after each plugin update."""
+    data = os.environ.get("CLAUDE_PLUGIN_DATA")
+    target = os.path.join(data, "statusline") if data else None
+    if not target or not os.path.isdir(target):
+        return
+    here = os.path.dirname(os.path.abspath(__file__))
+    for name in ("statusline.py", "cct_config.py"):
+        src, dst = os.path.join(here, name), os.path.join(target, name)
+        try:
+            with open(src, "rb") as f:
+                new = f.read()
+            old = None
+            if os.path.exists(dst):
+                with open(dst, "rb") as f:
+                    old = f.read()
+            if old != new:
+                with open(dst, "wb") as f:
+                    f.write(new)
+        except OSError:
+            pass
+
+
 def main():
+    refresh_plugin_statusline()
     if defer_to_project(__file__) or not load_config().get("setup_reminder", True):
         return
     proj = project_dir()

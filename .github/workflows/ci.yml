@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
 
@@ -23,12 +23,25 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Lint installer
-        if: runner.os == 'Linux'
-        run: shellcheck -S warning install.sh
-
       - name: Run tests
-        run: python3 tests/test_kit.py -v
+        run: python tests/test_kit.py -v
+
+      - name: Lint and try the macOS/Linux launcher
+        if: runner.os != 'Windows'
+        run: |
+          if command -v shellcheck >/dev/null; then shellcheck install.sh; fi
+          mkdir -p "$RUNNER_TEMP/demo"
+          sh install.sh --project "$RUNNER_TEMP/demo" --dry-run
+
+      - name: Try the Windows launcher
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\demo" | Out-Null
+          .\install.ps1 --project "$env:RUNNER_TEMP\demo"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-Content "$env:RUNNER_TEMP\demo\.claude\settings.json"
+          .\install.ps1 --project "$env:RUNNER_TEMP\demo" --uninstall
 
       - uses: actions/setup-node@v4
         if: runner.os == 'Linux'

@@ -51,13 +51,15 @@ Claude previews the install, applies it, then walks you through setup. This puts
 
 ```bash
 git clone --depth 1 https://github.com/John99101/claude-code-project-template /tmp/cct
-bash /tmp/cct/install.sh --project ~/code/my-app   # one project, shared with your team via git
-bash /tmp/cct/install.sh --global                  # every project on this device
+python3 /tmp/cct/install.py --project ~/code/my-app   # one project, shared with your team via git
+python3 /tmp/cct/install.py --global                  # every project on this device
 ```
+
+On Windows, in PowerShell: `.\install.ps1 --project C:\code\my-app` (or `py -3 install.py …`).
 
 Add `--dry-run` to preview. Existing files are never overwritten; `settings.json` is merged, with a backup. Then open Claude Code and run **`/setup`** (or `/setup --defaults` to skip the questions).
 
-**Option 4: new repository.** Click **Use this template** on GitHub. On the first session, `/setup` offers to clean the copy up (`install.sh --adopt`), removing the kit's own tests, CI and docs, and then sets up your project.
+**Option 4: new repository.** Click **Use this template** on GitHub. Then run `python3 install.py --adopt` in it once. That turns the copy into a normal install and removes the kit's own tests, CI and docs. Restart Claude Code and run `/setup`.
 
 <details>
 <summary><b>Which option should I pick?</b></summary>
@@ -66,15 +68,15 @@ Add `--dry-run` to preview. Existing files are never overwritten; `settings.json
 |---|---|---|---|
 | Commands | `/cct:setup`, `/cct:commit`… | `/setup`, `/commit`… | `/setup`, `/commit`… |
 | Shared with your team | Optional, via `.claude/settings.json` | Yes, committed to git | No |
-| Updates | `/plugin` | `/template-update` | `/template-update` |
-| Status line | No (plugins can't set one) | Yes | Yes |
+| Updates | `/plugin` | `/template-update` (`install.py --update`) | `/template-update` |
+| Status line | Yes, opt-in via `/cct:setup` | Yes | Yes |
 | Clashes with a project install | Never (namespaced) | — | Its skills win over the project's |
 
 </details>
 
-To remove it later: `bash /tmp/cct/install.sh --project ~/code/my-app --uninstall`. Files you changed are kept.
+Later: `--update` pulls kit updates and keeps your changes, and `--uninstall` removes the kit but keeps files you changed.
 
-> **Requirements:** Claude Code and `python3`. Tested on Linux and macOS.
+> **Requirements:** Claude Code and Python 3.8+. Tested on **Linux, macOS and Windows**. On Windows, install Python with the Python install manager from python.org, which provides the `python3` command ([details](docs/GUIDE.md#windows)).
 
 ## What setup looks like
 
@@ -101,43 +103,52 @@ See the [full walkthrough](docs/GUIDE.md#6-a-full-example) for the details.
 
 ## What's inside
 
+The repository uses Claude Code's standard plugin layout, so nothing in it lives in `.claude/`. The plugin uses these folders directly; the installer copies them into a project's `.claude/` (shown after the arrow).
+
 | Path | Role |
 |---|---|
-| [`CLAUDE.md`](CLAUDE.md) | **Project brief, loaded every session.** Overview, tech stack, commands table, architecture, conventions. Personal overrides go in `CLAUDE.local.md` (git-ignored). |
-| [`.claude/rules/`](.claude/rules) | **Conventions by topic:** code style, testing, API design, security, git workflow. Path-scoped rules load only for matching files. |
-| [`rule-packs/`](rule-packs) | **Ready-made language rules** for Python, TypeScript/JavaScript, Go, Rust and Java/Kotlin. Setup installs the ones your project uses. |
-| [`.claude/skills/`](.claude/skills) | **Slash commands and on-demand know-how.** You run `/setup`, `/check`, `/review-changes`, `/commit` and `/template-update`. Claude picks up `remember-preference`, `write-tests`, `debug-issue` and `release-notes` when relevant. |
-| [`.claude/agents/`](.claude/agents) | **Specialist subagents** with their own context, tools and model: planner, reviewer, security auditor, test writer. |
-| [`.claude/hooks/`](.claude/hooks) | **Enforced behaviour:** setup reminder, shell-command guard, secret-file protection, format and lint on every edit, status line. |
-| [`.claude/settings.json`](.claude/settings.json) | **Permissions, tool access, model, hooks and status line.** Personal overrides go in `settings.local.json`. |
-| [`.mcp.json`](.mcp.json) | **External tools** (GitHub, Jira, Slack, databases…), shared via git. Credentials stay in `${ENV_VARS}`. |
-| [`.claude/cct.json`](.claude/cct.json) | **Kit switches:** guard level, format and lint on edit, lockfile protection, setup reminder. |
+| [`templates/CLAUDE.project.md`](templates/CLAUDE.project.md) → `CLAUDE.md` | **Project brief, loaded every session.** Overview, tech stack, commands table, architecture, conventions. Personal overrides go in `CLAUDE.local.md` (git-ignored). |
+| [`rules/`](rules) → `.claude/rules/` | **Conventions by topic:** code style, testing, API design, security, git workflow. Path-scoped rules load only for matching files. |
+| [`rule-packs/`](rule-packs) → `.claude/cct/` | **Ready-made language rules** for Python, TypeScript/JavaScript, Go, Rust and Java/Kotlin. Setup installs the ones your project uses. |
+| [`skills/`](skills) → `.claude/skills/` | **Slash commands and on-demand know-how.** You run `/setup`, `/check`, `/review-changes`, `/commit` and `/template-update`. Claude picks up `remember-preference`, `write-tests`, `debug-issue` and `release-notes` when relevant. |
+| [`agents/`](agents) → `.claude/agents/` | **Specialist subagents** with their own context, tools and model: planner, reviewer, security auditor, test writer. |
+| [`hooks/`](hooks) → `.claude/hooks/` | **Enforced behaviour:** setup reminder, shell-command guard, secret-file protection, format and lint on every edit, status line. |
+| [`templates/settings.project.json`](templates/settings.project.json) → `.claude/settings.json` | **Permissions, tool access, model, hooks and status line** (hooks and status line are added by the installer). Personal overrides go in `settings.local.json`. |
+| [`templates/mcp.json`](templates/mcp.json) → `.mcp.json` | **External tools** (GitHub, Jira, Slack, databases…), shared via git. Credentials stay in `${ENV_VARS}`. |
+| [`templates/cct.json`](templates/cct.json) → `.claude/cct.json` | **Kit switches:** guard level, format and lint on edit, lockfile protection, setup reminder. |
 
 <details>
 <summary><b>Full file tree</b></summary>
 
 ```text
 .
-├── CLAUDE.md                     # project brief (template)
-├── CLAUDE.local.md.example       # personal overrides example
-├── .mcp.json                     # MCP servers (filled by setup)
-├── .claude/
-│   ├── settings.json             # permissions, hooks, status line
-│   ├── settings.local.json.example
-│   ├── cct.json                  # kit switches
-│   ├── rules/                    # code-style, testing, api-design, security, git-workflow
-│   ├── skills/                   # setup (+ questions, MCP catalog), check, review-changes, commit,
-│   │                             # template-update, remember-preference, write-tests, debug-issue, release-notes
-│   ├── agents/                   # planner, reviewer, security-auditor, test-writer
-│   └── hooks/                    # session_start, guard_bash, protect_files, format_file, statusline
-├── rule-packs/                   # python, typescript, go, rust, java
-├── templates/                    # device-wide CLAUDE.md + settings, monorepo package brief
 ├── .claude-plugin/               # plugin manifest, marketplace entry, icon
-├── plugin/hooks.json             # the plugin's hook registrations
-├── install.sh                    # install, adopt, uninstall (not copied into projects)
-├── scripts/                      # settings merger, MCP catalog check, changelog tool
+├── skills/                       # setup (+ questions, MCP catalog), check, review-changes, commit,
+│                                 # template-update, remember-preference, write-tests, debug-issue, release-notes
+├── agents/                       # planner, reviewer, security-auditor, test-writer
+├── hooks/                        # hooks.json + session_start, guard_bash, protect_files, format_file, statusline
+├── rules/                        # code-style, testing, api-design, security, git-workflow
+├── rule-packs/                   # python, typescript, go, rust, java
+├── templates/                    # CLAUDE.md templates, base settings, cct.json, mcp.json, examples
+├── install.py                    # install, update, adopt, uninstall (Linux, macOS, Windows)
+├── install.sh, install.ps1       # launchers that find Python and run install.py
+├── scripts/                      # settings merger, status line helper, MCP catalog check, changelog tool
 ├── tests/                        # test suite, setup eval, sample projects
 └── docs/GUIDE.md                 # in-depth guide
+```
+
+What a project gets after `install.py --project`:
+
+```text
+my-app/
+├── CLAUDE.md                     # project brief, filled in by /setup
+├── CLAUDE.local.md.example       # personal overrides example
+├── .mcp.json                     # MCP servers (filled by /setup)
+└── .claude/
+    ├── settings.json             # permissions, hooks, status line
+    ├── cct.json                  # kit switches
+    ├── rules/  skills/  agents/  hooks/
+    └── cct/                      # rule packs, package template, install manifest
 ```
 
 </details>
@@ -155,8 +166,8 @@ Set `guard_level` to `strict` to also confirm pushes, new dependencies and any d
 
 | Check | When |
 |---|---|
-| [Test suite](tests/test_kit.py): hooks, installer, uninstaller, settings merge, file formats | Every push, Linux and macOS |
-| [Setup eval](tests/eval_setup.py): runs `/setup` for real on four sample projects | Weekly and on demand (needs an `ANTHROPIC_API_KEY` secret) |
+| [Test suite](tests/test_kit.py): hooks (Bash and PowerShell), installer, update, uninstall, plugin, file formats | Every push, on Linux, macOS and Windows |
+| [Setup eval](tests/eval_setup.py): runs `/setup` for real on four sample projects | Any time on your machine with your Claude subscription (`python3 tests/eval_setup.py`); weekly on GitHub with a `claude setup-token` secret ([how](docs/GUIDE.md#running-the-setup-eval)) |
 | [MCP catalog check](scripts/check_mcp_catalog.py): every server URL and package still exists | Weekly; opens an issue if something breaks |
 
 ## Documentation

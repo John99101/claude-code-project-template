@@ -13,10 +13,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check tag matches VERSION
+      - name: Check tag matches VERSION and plugin.json
         run: |
           if [ "${GITHUB_REF_NAME#v}" != "$(cat VERSION)" ]; then
             echo "::error::Tag $GITHUB_REF_NAME doesn't match VERSION ($(cat VERSION))"; exit 1
+          fi
+          plugin=$(python3 -c 'import json; print(json.load(open(".claude-plugin/plugin.json"))["version"])')
+          if [ "$plugin" != "$(cat VERSION)" ]; then
+            echo "::error::.claude-plugin/plugin.json has version $plugin, VERSION has $(cat VERSION)"; exit 1
           fi
 
       - name: Run tests

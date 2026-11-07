@@ -134,7 +134,7 @@ Agents run in a **separate context window**, so a long exploration or review doe
 Hooks need only `python3` and the standard library. They never download anything, never break a session on bad input, and only use tools already in your project (`node_modules/.bin`, `.venv/bin`) or on your `PATH`.
 
 ### `.mcp.json` — external tools
-Ships empty. During setup, Claude suggests servers that fit your stack: GitHub if your remote is GitHub, Postgres if you use Postgres, and so on. It adds the ones you pick from [`mcp-catalog.json`](../.claude/skills/setup/mcp-catalog.json), which is checked weekly so its entries stay current. **Credentials are always `${ENV_VAR}` references** or browser logins via `/mcp`, so the file is safe to commit and share.
+Ships empty. During setup, Claude suggests servers that fit your stack: GitHub if your remote is GitHub, Postgres if you use Postgres, and so on. It adds the ones you pick from [`mcp-catalog.json`](../skills/setup/mcp-catalog.json), which is checked weekly so its entries stay current. **Credentials are always `${ENV_VAR}` references** or browser logins via `/mcp`, so the file is safe to commit and share.
 
 ### `.claude/settings.json` — permissions, hooks and status line
 Pre-approves read-only git commands, asks before `git push`, denies reading `.env` and key files, and registers the hooks and status line. Setup adds the project's own safe commands (for example `Bash(npm run test:*)`) so you're not prompted for every test run. Personal overrides go in `.claude/settings.local.json` (git-ignored).
@@ -143,7 +143,7 @@ Pre-approves read-only git commands, asks before `git push`, denies reading `.en
 
 ```mermaid
 flowchart TD
-    A[install.sh or 'Use this template'] --> B[.claude/cct-pending marker]
+    A[install.py, the plugin, or 'Use this template'] --> B[.claude/cct-pending marker]
     B --> C[Next session: session_start hook notices marker]
     C --> D[Claude offers /setup]
     D -->|you agree| E[Load saved preferences + existing docs]
@@ -158,7 +158,7 @@ flowchart TD
 
 **Detection** reads: package manifests and lockfiles (language, framework, package manager); test, lint, format and type-check configs; `Makefile`, `justfile` and `package.json` scripts (real commands); CI workflows (what must pass); Docker and ORM files (databases → MCP suggestions); workspace files (monorepos); the folder layout (architecture); git history (commit style, branch naming); and any existing `CLAUDE.md`, `AGENTS.md`, `.cursorrules` or Copilot instructions, which are merged, not discarded.
 
-**Questions** come from a fixed [question bank](../.claude/skills/setup/questions.md), so they're consistent. Each round has at most four multiple-choice questions, with the recommended answer first and the detected facts quoted ("Found Jest and Vitest configs. Which is current?"). Anything detected or saved is *not* asked again; it's listed in the plan for you to confirm.
+**Questions** come from a fixed [question bank](../skills/setup/questions.md), so they're consistent. Each round has at most four multiple-choice questions, with the recommended answer first and the detected facts quoted ("Found Jest and Vitest configs. Which is current?"). Anything detected or saved is *not* asked again; it's listed in the plan for you to confirm.
 
 **Nothing is written before you approve the plan**, and nothing is committed. Your existing content is merged, never silently dropped.
 
@@ -175,7 +175,7 @@ Setup recognises pnpm, npm and yarn workspaces, Nx, Turborepo, Lerna, Cargo work
 
 ## 6. A full example
 
-*Illustrative.* A TypeScript API, installed with `install.sh --project`, then opened in Claude Code:
+*Illustrative.* A TypeScript API, installed with `install.py --project`, then opened in Claude Code:
 
 > **Claude:** This project has the Claude Code kit installed, but setup isn't finished. Want me to run `/setup` now?
 >
@@ -248,13 +248,13 @@ To turn off the status line, remove `statusLine` from `settings.json` (or answer
 
 | | Plugin | Project (`--project`) | Device script (`--global`) |
 |---|---|---|---|
-| Install | `/plugin install cct --marketplace John99101/claude-code-project-template` | `install.sh --project <dir>` | `install.sh --global` |
+| Install | `/plugin install cct --marketplace John99101/claude-code-project-template` | `install.py --project <dir>` | `install.py --global` |
 | Lives in | Claude Code's plugin cache | `<project>/.claude/`, `CLAUDE.md`, `.mcp.json` | `~/.claude/` (hooks in `~/.claude/hooks/cct/`) |
 | Commands | `/cct:setup`, `/cct:commit`, `/cct:check`… | `/setup`, `/commit`, `/check`… | `/setup`, `/commit`, `/check`… |
 | Shared via git | Optional (see below) | Yes | No |
 | Updates | `/plugin` | `/template-update` | `/template-update` |
-| Remove | `/plugin uninstall cct@cct-kit` | `install.sh --project <dir> --uninstall` | `install.sh --global --uninstall` |
-| Status line | Not possible: plugins can only set `agent` and `subagentStatusLine` | Yes | Yes |
+| Remove | `/plugin uninstall cct@cct-kit` | `install.py --project <dir> --uninstall` | `install.py --global --uninstall` |
+| Status line | Yes, opt-in: `/cct:setup` turns it on (plugins can't set one themselves, see below) | Yes | Yes |
 | Best for | Your personal toolkit in every project | Teams, or projects that need specific config | Personal use when you want plain files you can edit |
 
 **What setup writes in each case:** the plugin provides the skills, agents and hooks. `/cct:setup` still writes the project's `CLAUDE.md` and `.claude/rules/`, because plugins can't ship rules or project context.
@@ -272,9 +272,24 @@ To turn off the status line, remove `statusLine` from `settings.json` (or answer
 
 **Combining installs:** hooks never run twice. A project's own copy wins, then the device copy, then the plugin. **Skills are different:** Claude Code gives *personal* skills priority over *project* skills with the same name, so with a device script install, `/setup` and `/commit` run the device copies even in a project with its own customised ones. Plugin skills are namespaced and never clash, which is why the plugin is the better choice for device-wide use.
 
+**Status line with the plugin:** Claude Code only lets plugins set `agent` and `subagentStatusLine`, not the main status line. So `/cct:setup` offers to turn it on for you: it copies the status line script into the plugin's data folder (`~/.claude/plugins/data/…`, which survives plugin updates) and points your personal `~/.claude/settings.json` at it. The plugin's session-start hook refreshes that copy after every update. It never replaces a status line of your own. To switch it off, ask `/cct:setup` or remove `statusLine` from `~/.claude/settings.json`.
+
+### Windows
+
+The kit works on Windows 10 and 11, in PowerShell, Windows Terminal or Git Bash.
+
+| | What to know |
+|---|---|
+| **Python** | Install Python 3.8+ with the **Python install manager** from [python.org](https://www.python.org/downloads/) (or the Microsoft Store). Both provide a `python3` command, which the plugin's hooks and project installs use. Older python.org installers only add `python` and `py`. Device installs detect those automatically, but project installs and the plugin need `python3`. |
+| **Install** | Plugin: same `/plugin install` line as everywhere. Script: `.\install.ps1 --project C:\code\my-app` in PowerShell, or `py -3 install.py --project C:\code\my-app`. |
+| **Hooks** | Run without a shell (exec form), so they behave the same whether Claude Code uses Git Bash or PowerShell, and paths with spaces are fine. |
+| **Guard** | Covers the **PowerShell tool** as well as Bash. It blocks `Remove-Item -Recurse` on drives, `C:\Users`, `C:\Windows` or your profile; `rd /s` of the same; `Format-Volume` and `diskpart`; and `iwr … \| iex`. It asks before recursive deletes elsewhere, `Set-ExecutionPolicy`, registry deletes, restarts and `Get-Content .env`. In Git Bash it also knows `/c/` and `C:/` drive roots, and it checks `powershell -Command "…"` and `cmd /c …` launched from Bash. |
+| **Formatting and linting** | Finds tools in `.venv\Scripts\` and `node_modules\.bin\*.cmd` as well as on `PATH`. |
+| **Mixed teams** | A project install is shared through git, so its hooks use `python3` for every teammate. Windows teammates on an older Python installer can install the Python install manager, or use the plugin. |
+
 ### Repos created with "Use this template"
 
-A repo created from GitHub's template button gets a copy of the whole kit repository, including the kit's own tests, CI and release workflows, changelog and license. On the first `/setup`, Claude detects this and offers `install.sh --adopt`, which:
+A repo created from GitHub's template button gets a copy of the whole kit repository, including the kit's own tests, CI and release workflows, changelog and license. On the first `/setup`, Claude detects this and offers `install.py --adopt`, which:
 
 - moves the language rules and package template into `.claude/cct/`, where setup expects them;
 - records a manifest, so `/template-update` and `--uninstall` work later;
@@ -311,8 +326,8 @@ Nothing is written before you confirm.
 **Remove** with the installer:
 
 ```bash
-bash install.sh --project ~/code/my-app --uninstall --dry-run   # preview
-bash install.sh --project ~/code/my-app --uninstall             # or: --global --uninstall
+python3 install.py --project ~/code/my-app --uninstall --dry-run   # preview
+python3 install.py --project ~/code/my-app --uninstall             # or: --global --uninstall
 ```
 
 It deletes every kit file you haven't changed, **keeps and lists the ones you have** (like your filled-in `CLAUDE.md`), takes the kit's hooks and status line out of `settings.json` (with a backup), and leaves your permission rules and `.gitignore` lines alone.
@@ -321,12 +336,29 @@ It deletes every kit file you haven't changed, **keeps and lists the ones you ha
 
 | Check | What it covers | When |
 |---|---|---|
-| [`tests/test_kit.py`](../tests/test_kit.py) | Every guard rule (including the loopholes above), file protection, lint feedback, status line, device/project de-duplication, settings merge and removal, install, uninstall, file formats | Every push and pull request, on Linux and macOS |
-| [`tests/eval_setup.py`](../tests/eval_setup.py) | Runs `/setup --defaults` **for real** on four sample projects in [`tests/fixtures/`](../tests/fixtures) (Python, TypeScript, Go, pnpm monorepo) and checks: marker removed, no placeholders left, valid JSON, the right commands in `CLAUDE.md`, the right rule packs, package briefs in the monorepo, guard still working | Weekly and on demand, when the repo has an `ANTHROPIC_API_KEY` secret. Uses API credits (roughly $0.30–1 per project on Sonnet). |
+| [`tests/test_kit.py`](../tests/test_kit.py) | Every guard rule for Bash and PowerShell (including the loopholes above), file protection, lint feedback, status line, de-duplication across project/device/plugin installs, settings merge and migration, install, update, uninstall, adopt, plugin files, file formats | Every push and pull request, on **Linux, macOS and Windows** |
+| `claude plugin validate .` | The plugin and marketplace manifests | Every push |
+| [`tests/eval_setup.py`](../tests/eval_setup.py) | Runs `/setup --defaults` **for real** on four sample projects in [`tests/fixtures/`](../tests/fixtures) (Python, TypeScript, Go, pnpm monorepo) and checks: marker removed, no placeholders left, valid JSON, the right commands in `CLAUDE.md`, the right rule packs, package briefs in the monorepo, guard still working | On your machine whenever you like, and weekly or on demand on GitHub (see below) |
 | [`scripts/check_mcp_catalog.py`](../scripts/check_mcp_catalog.py) | Every MCP catalog URL still answers, and every npm/PyPI package still exists and isn't deprecated | Weekly; opens a GitHub issue if something broke |
-| Release workflow | Tag matches `VERSION`, tests pass, release notes come from `CHANGELOG.md` | On every `v*` tag |
+| Release workflow | Tag matches `VERSION` and `plugin.json`, tests pass, release notes come from `CHANGELOG.md` | On every `v*` tag |
 
-To run the setup eval yourself: `python3 tests/eval_setup.py python-app --keep` (keeps the result folder so you can inspect it).
+### Running the setup eval
+
+**On your own machine, with your Claude subscription:** no API key needed. In a terminal (or in Claude Code with the `!` prefix):
+
+```bash
+python3 tests/eval_setup.py python-app          # one sample project, about 2–5 minutes
+python3 tests/eval_setup.py                     # all four
+python3 tests/eval_setup.py python-app --keep   # keep the result folder to inspect it
+```
+
+It uses your normal `claude` login. Because Claude Code asks before every write to `.claude/` and nobody is there to answer in a headless run, the eval runs Claude **without permission prompts**, but only inside a fresh temp copy of a sample project, with the kit's guard hooks active and your personal settings and plugins not loaded. On a subscription the dollar figures it prints are estimates, not charges.
+
+**On GitHub, with your subscription:** run `claude setup-token` once in a terminal. It prints a long-lived login token for your subscription. Add it as a repository secret named `CLAUDE_CODE_OAUTH_TOKEN` (**Settings → Secrets and variables → Actions**). The **Setup eval** workflow then runs weekly and from **Actions → Setup eval → Run workflow**. An `ANTHROPIC_API_KEY` secret works too, if you'd rather use API credits.
+
+### Keeping the weekly checks running
+
+GitHub pauses scheduled workflows in a public repository after 60 days without activity. Each weekly workflow therefore re-enables itself through the GitHub API on every run, which keeps it active. If one does get paused anyway, GitHub emails you; open **Actions**, pick the workflow, and click **Enable workflow**.
 
 ## 13. Troubleshooting
 

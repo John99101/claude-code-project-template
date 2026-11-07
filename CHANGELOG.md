@@ -4,6 +4,24 @@ All notable changes to this kit. The format follows [Keep a Changelog](https://k
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-07
+
+### Changed
+- **The kit's own files no longer live in `.claude/`.** The repository now uses Claude Code's standard plugin layout (`skills/`, `agents/`, `hooks/`, `rules/`, `templates/`). The installer copies them into a project's `.claude/` only when you install. This also fixes the plugin validator's warning about the root `CLAUDE.md`, which is now `templates/CLAUDE.project.md`.
+- **New cross-platform installer, `install.py`.** It replaces the bash script and works on Linux, macOS and Windows. `install.sh` (macOS/Linux) and `install.ps1` (Windows) are small launchers that find Python and run it.
+- Hooks are registered in exec form (no shell), so they behave the same in Git Bash, PowerShell and sh, and paths with spaces work. Installing or updating migrates hook entries from 1.x automatically, without touching your own hooks.
+
+### Added
+- **Windows support:**
+  - the guard covers the PowerShell tool (`Remove-Item -Recurse` on drives and system folders, `rd /s`, `Format-Volume`, `diskpart`, `iwr | iex`, registry deletes, `Set-ExecutionPolicy`), Windows paths in Git Bash (`/c/`, `C:/`), and `powershell -Command` or `cmd /c` launched from Bash;
+  - the formatter and linter find tools in `.venv\Scripts\` and `node_modules\.bin\*.cmd`;
+  - device installs detect `python3`, `py -3` or `python`;
+  - CI runs on Windows.
+- **`install.py --update`** updates an install in place: files you haven't changed are updated, files you changed are kept and the new version is saved under `.claude/cct/incoming/`, and files removed from the kit are cleaned up (including 1.0's `commands/`). `/template-update` uses it.
+- **Status line for plugin users:** `/cct:setup` can turn it on through `scripts/enable_statusline.py`. It lives in the plugin's data folder, survives updates, and is refreshed by the session-start hook.
+- **Setup eval with your subscription:** runs locally with your normal Claude login, and on GitHub with a `CLAUDE_CODE_OAUTH_TOKEN` secret from `claude setup-token` (an API key still works).
+- Scheduled workflows re-enable themselves on each run, so GitHub's 60-day inactivity pause doesn't stop the weekly checks.
+
 ## [1.2.0] - 2026-11-07
 
 ### Added
@@ -54,7 +72,8 @@ All notable changes to this kit. The format follows [Keep a Changelog](https://k
 - MCP catalog: GitHub, Atlassian (Jira/Confluence), Slack, Postgres, SQLite, Playwright, Context7.
 - Test suite and CI on Linux and macOS.
 
-[Unreleased]: https://github.com/John99101/claude-code-project-template/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/John99101/claude-code-project-template/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/John99101/claude-code-project-template/releases/tag/v2.0.0
 [1.2.0]: https://github.com/John99101/claude-code-project-template/releases/tag/v1.2.0
 [1.1.0]: https://github.com/John99101/claude-code-project-template/releases/tag/v1.1.0
 [1.0.0]: https://github.com/John99101/claude-code-project-template/releases/tag/v1.0.0

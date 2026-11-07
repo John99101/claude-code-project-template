@@ -14,7 +14,7 @@ import urllib.parse
 import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CATALOG = os.path.join(ROOT, ".claude", "skills", "setup", "mcp-catalog.json")
+CATALOG = os.path.join(ROOT, "skills", "setup", "mcp-catalog.json")
 UA = {"User-Agent": "claude-code-project-kit-catalog-check"}
 
 

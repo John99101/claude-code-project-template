@@ -100,7 +100,7 @@ def prepare(name, workdir):
     subprocess.run(["git", "init", "-q"], cwd=project, check=True)
     subprocess.run(git + ["add", "-A"], cwd=project, check=True)
     subprocess.run(git + ["commit", "-qm", "feat: initial commit"], cwd=project, check=True)
-    subprocess.run(["bash", os.path.join(ROOT, "install.sh"), "--project", project],
+    subprocess.run([sys.executable, os.path.join(ROOT, "install.py"), "--project", project],
                    check=True, capture_output=True)
     return project
 
