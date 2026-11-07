@@ -42,7 +42,7 @@ Or say *"…onto this device for all my projects"*. Claude previews the install,
 **Option 2: the install script.**
 
 ```bash
-gh repo clone John99101/claude-code-project-template /tmp/cct -- --depth 1
+git clone --depth 1 https://github.com/John99101/claude-code-project-template /tmp/cct
 bash /tmp/cct/install.sh --project ~/code/my-app   # one project, shared with your team via git
 bash /tmp/cct/install.sh --global                  # every project on this device
 ```

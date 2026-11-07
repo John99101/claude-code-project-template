@@ -6,8 +6,8 @@ Follow this when a user asks Claude Code to install this kit (`John99101/claude-
    - *This project only* (recommended inside a project): config lives in the repo and is shared with the team.
    - *All projects on this device*: installs into `~/.claude`; each project gets set up the first time you open it.
 2. **Get the kit** into a new, empty temp directory:
-   `gh repo clone John99101/claude-code-project-template <tmp>/kit -- --depth 1`
-   (or `git clone --depth 1 https://github.com/John99101/claude-code-project-template <tmp>/kit`). The repo may be private, so `gh` must be logged in with access.
+   `git clone --depth 1 https://github.com/John99101/claude-code-project-template <tmp>/kit`
+   The repo is public, so no GitHub login is needed.
 3. **Preview**, show the user, and get their OK:
    `bash <tmp>/kit/install.sh --project <dir> --dry-run` or `bash <tmp>/kit/install.sh --global --dry-run`
 4. **Install** with the same command without `--dry-run`. Existing files are never overwritten; settings are merged with a backup.
