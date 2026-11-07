@@ -17,6 +17,10 @@
       "Read(./**/*.key)"
     ]
   },
+  "statusLine": {
+    "type": "command",
+    "command": "python3 \"$HOME/.claude/hooks/cct/statusline.py\""
+  },
   "hooks": {
     "SessionStart": [
       {

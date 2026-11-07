@@ -22,7 +22,9 @@ Ask only what you couldn't detect and isn't in `~/.claude/cct-preferences.md`. P
 |---|---|---|
 | `guard_level` | How strict should the safety guard be? | Standard: block destructive, ask on risky (rec.) · Strict: also ask before push, new dependencies, any delete · Off |
 | `format_on_edit` | Auto-format files after I edit them? | Yes, with the project's formatter (rec.) · No |
+| `lint_on_edit` | Lint files after I edit them and fix problems right away? | Yes, with the project's linter (rec.) · No |
 | `protect_lockfiles` | Ask before I edit lockfiles by hand? | Yes (rec.) · No |
+| `statusline` | Show a status line with model, branch, guard level and setup state? | Yes (rec.) · No, keep mine |
 
 ## Project (not saved globally)
 
@@ -33,6 +35,7 @@ Ask only what you couldn't detect and isn't in `~/.claude/cct-preferences.md`. P
 | test framework | Which test framework is current? | Several configs found. |
 | conventions | Any conventions I should know that aren't in the code (naming, folder rules, things to avoid)? | Always once, as an open question; "None" is option 1. |
 | rules (multi) | Which rule files should this project keep? | Show code-style, testing, api-design, security, git-workflow, plus a suggested language rule. Pre-select the ones that apply. |
+| packages (multi) | Which monorepo packages should get their own CLAUDE.md? | Monorepo detected. Pre-select apps and services. |
 | mcp (multi) | Connect any tools via MCP? | Offer from `mcp-catalog.json` what fits the detected stack: GitHub if the remote is GitHub, Postgres if the DB is Postgres, Jira or Slack if mentioned in docs. |
 | branch policy | Work on feature branches or commit to the default branch? | No clear pattern in history. |
 
@@ -42,7 +45,7 @@ Write `~/.claude/cct-preferences.md` like this, so later setups can reuse it:
 
 ```markdown
 # Claude Code kit — saved preferences
-<!-- Read by the project-setup skill. Edit freely. -->
+<!-- Read by the setup skill. Edit freely. -->
 updated: 2026-01-31
 
 - language: same as user
@@ -56,5 +59,7 @@ updated: 2026-01-31
 - agent_models: planner opus, others inherit
 - guard_level: standard
 - format_on_edit: yes
+- lint_on_edit: yes
 - protect_lockfiles: yes
+- statusline: yes
 ```

@@ -1,6 +1,8 @@
 ---
+name: review-changes
 description: Review uncommitted changes with the reviewer and security-auditor agents
 argument-hint: "[focus]"
+disable-model-invocation: true
 allowed-tools: Bash(git status:*), Bash(git diff:*)
 ---
 

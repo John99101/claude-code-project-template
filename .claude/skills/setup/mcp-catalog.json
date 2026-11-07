@@ -1,5 +1,5 @@
 {
-  "_about": "MCP servers the project-setup skill can add to .mcp.json. Copy an entry's 'config' under mcpServers.<name>. Values in ${...} come from the user's environment; never write real tokens. Check the vendor docs for current URLs and packages before adding.",
+  "_about": "MCP servers the setup skill can add to .mcp.json. Copy an entry's 'config' under mcpServers.<name>. Values in ${...} come from the user's environment; never write real tokens. Check the vendor docs for current URLs and packages before adding.",
   "servers": {
     "github": {
       "for": "Issues, pull requests, code search, Actions",
@@ -22,22 +22,23 @@
       }
     },
     "slack": {
-      "for": "Read and post Slack messages",
-      "env": ["SLACK_BOT_TOKEN", "SLACK_TEAM_ID"],
-      "docs": "Search 'Slack MCP server' for the current official server; this entry may be outdated.",
+      "for": "Search, read and post Slack messages (official Slack-hosted server)",
+      "env": [],
+      "auth": "OAuth: run /mcp in Claude Code and log in. Alternative: /plugin install slack@claude-plugins-official",
+      "docs": "https://docs.slack.dev/ai/slack-mcp-server/connect-to-harnesses",
       "config": {
-        "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-slack"],
-        "env": { "SLACK_BOT_TOKEN": "${SLACK_BOT_TOKEN}", "SLACK_TEAM_ID": "${SLACK_TEAM_ID}" }
+        "type": "http",
+        "url": "https://mcp.slack.com/mcp"
       }
     },
     "postgres": {
-      "for": "Query a PostgreSQL database (use a read-only user)",
-      "env": ["DATABASE_URL"],
-      "docs": "https://github.com/modelcontextprotocol/servers",
+      "for": "Query a PostgreSQL database; restricted mode is read-only",
+      "env": ["DATABASE_URI"],
+      "docs": "https://github.com/crystaldba/postgres-mcp",
       "config": {
-        "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-postgres", "${DATABASE_URL}"]
+        "command": "uvx",
+        "args": ["postgres-mcp", "--access-mode=restricted"],
+        "env": { "DATABASE_URI": "${DATABASE_URI}" }
       }
     },
     "sqlite": {

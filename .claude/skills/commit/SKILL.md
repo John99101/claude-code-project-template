@@ -1,6 +1,8 @@
 ---
+name: commit
 description: Write a commit message that follows this project's style and commit the staged changes
 argument-hint: "[what to commit, in plain words]"
+disable-model-invocation: true
 allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git add:*), Bash(git commit:*)
 ---
 

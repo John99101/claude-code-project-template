@@ -5,7 +5,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from cct_config import decide, load_config, project_dir, read_input  # noqa: E402
+from cct_config import decide, defer_to_project, load_config, project_dir, read_input  # noqa: E402
 
 SECRET_OK = {".env.example", ".env.sample", ".env.template", ".env.dist"}
 SECRET_PATTERNS = ["*.pem", "*.key", "*.p12", "*.pfx", "id_rsa*", "id_ed25519*", "*.keystore", "credentials.json"]
@@ -16,6 +16,8 @@ LOCKFILES = {
 
 
 def main():
+    if defer_to_project(__file__):
+        return
     cfg = load_config()
     if str(cfg.get("guard_level", "standard")).lower() == "off":
         return

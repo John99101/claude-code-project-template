@@ -11,7 +11,7 @@ Follow this when a user asks Claude Code to install this kit (`John99101/claude-
 3. **Preview**, show the user, and get their OK:
    `bash <tmp>/kit/install.sh --project <dir> --dry-run` or `bash <tmp>/kit/install.sh --global --dry-run`
 4. **Install** with the same command without `--dry-run`. Existing files are never overwritten; settings are merged with a backup.
-5. **Run setup now.** Read the installed `.claude/skills/project-setup/SKILL.md` (device: `~/.claude/skills/project-setup/SKILL.md`) and follow it. Don't wait for a restart.
+5. **Run setup now.** Read the installed `.claude/skills/setup/SKILL.md` (device: `~/.claude/skills/setup/SKILL.md`) and follow it. Don't wait for a restart.
 6. Tell the user to restart Claude Code afterwards so the new hooks, commands and MCP servers load.
 
-To remove the kit, delete the files listed in `.claude/cct/manifest.txt` (device: `~/.claude/cct/manifest.txt`) and remove the `cct` hook entries from `settings.json`.
+To remove the kit, run `bash <tmp>/kit/install.sh --project <dir> --uninstall` (or `--global --uninstall`). Add `--dry-run` first to preview. Files the user changed are kept and listed.

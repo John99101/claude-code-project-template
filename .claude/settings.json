@@ -21,6 +21,10 @@
       "Read(./**/*.key)"
     ]
   },
+  "statusLine": {
+    "type": "command",
+    "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/statusline.py\""
+  },
   "hooks": {
     "SessionStart": [
       {

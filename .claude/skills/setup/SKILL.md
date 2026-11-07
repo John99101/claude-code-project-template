@@ -1,11 +1,14 @@
 ---
-name: project-setup
+name: setup
 description: Set up, finish or re-tune the Claude Code configuration (CLAUDE.md, rules, settings, MCP servers, agents, hooks) for a project or for this device. Use when a "[cct]" session notice says setup is pending, right after installing the Claude Code kit, when the user runs /setup, or when they want to change how Claude works in a project.
+argument-hint: "[project | device | --defaults | what to change]"
 ---
 
-# Project setup
+# Setup
 
 Finish this Claude Code kit so it fits **this project** and **this user**. Detect what you can, ask about what you can't, show the plan, then write it.
+
+Arguments from the user: $ARGUMENTS
 
 ## Ground rules
 
@@ -13,8 +16,13 @@ Finish this Claude Code kit so it fits **this project** and **this user**. Detec
 - **Don't ask what you already know.** Detect from files first. Reuse saved answers from `~/.claude/cct-preferences.md` and list them in the plan instead of asking again.
 - **Never write secrets** into any file. MCP configs use `${ENV_VAR}` references.
 - **Never drop user-written content** from an existing `CLAUDE.md` or rule without asking.
-- Keep `CLAUDE.md` under ~150 lines. Put topic detail in `.claude/rules/`.
+- Keep each `CLAUDE.md` under ~150 lines. Put topic detail in `.claude/rules/`.
 - Don't commit or push. Offer `/commit` at the end.
+- **Claude Code protects the `.claude/` folder** and asks before each write there, even in auto-accept mode. Before writing (step 5), tell the user in one line to expect these prompts and that "allow for this session" saves clicking through each one. If a write is refused, say which file and stop; don't remove the setup marker until every file is written.
+
+### Non-interactive mode (`--defaults`)
+
+If the arguments contain `--defaults`, don't ask any questions and don't wait for plan approval. Use the detected value, or the saved preference, or the **recommended** option from the question bank. Skip MCP servers unless the stack clearly needs one, and don't save preferences. Everything else, including verification, runs as normal. End with a list of every choice made by default. This mode exists for automated tests and for users who want a quick start.
 
 ## 0. Pick the mode
 
@@ -22,9 +30,9 @@ Finish this Claude Code kit so it fits **this project** and **this user**. Detec
 |---|---|
 | **Project** | `.claude/cct-pending` exists in the project, or the user wants this project set up. |
 | **Device** | `~/.claude/cct-pending` exists, or the user wants defaults for all projects on this machine. |
-| **Re-tune** | No marker; the user ran `/setup` again. Read the current config and ask what to change (`$ARGUMENTS` may say). |
+| **Re-tune** | No marker; the user ran `/setup` again. Read the current config and ask what to change (the arguments may say). |
 
-If both markers exist, ask which to do first. Device first is usually better because its answers feed project mode.
+If both markers exist, ask which to do first. Device first is usually better because its answers feed project mode. With `--defaults`, do project mode.
 
 ## 1. Load what's known
 
@@ -32,6 +40,8 @@ Read, if present:
 - `~/.claude/cct-preferences.md`: saved answers from earlier setups.
 - `~/.claude/CLAUDE.md` and `~/.claude/rules/`: device-wide instructions.
 - Project: `CLAUDE.md`, `.claude/cct/CLAUDE.template.md` (the installer saves the template there when a `CLAUDE.md` already existed), `CLAUDE.local.md`, `AGENTS.md`, `.cursorrules`, `.cursor/rules/`, `.github/copilot-instructions.md`, `CONTRIBUTING.md`, `README.md`. Carry over the conventions they contain.
+
+The kit's extra files live in `.claude/cct/` (device: `~/.claude/cct/`): `rule-packs/` (ready-made language rules) and `CLAUDE.package.md` (template for monorepo packages).
 
 ## 2. Detect (project mode)
 
@@ -47,8 +57,9 @@ Read, if present:
 | `docker-compose*.yml`, `.env.example`, ORM config (`prisma/`, `alembic/`, `migrations/`) | Databases and services, which MCP servers might help |
 | Top-level dirs, entry points (`src/main.*`, `app/`, `cmd/`) | Architecture summary |
 | `git log --oneline -30`, `git branch -a`, `git remote -v` | Commit style, branch naming, default branch, GitHub/GitLab |
+| `pnpm-workspace.yaml`, `"workspaces"` in `package.json`, `nx.json`, `turbo.json`, `lerna.json`, `[workspace]` in `Cargo.toml`, `go.work`, `[tool.uv.workspace]` | **Monorepo**: package list and locations (see §5b) |
 
-Also check tools: `python3` (the hooks need it; warn if missing), and the formatter binaries the hooks would call.
+Also check tools: `python3` (the hooks need it; warn if missing), and the formatter and linter binaries the hooks would call.
 
 Run read-only commands only. Ask before running install, build or test commands that are slow or change files.
 
@@ -64,12 +75,22 @@ Show a short plan: each file to create or change, with the key values (commands,
 
 **Project mode**
 - `CLAUDE.md`: fill every `{{…}}`. Delete table rows for commands that don't exist. If the user had a `CLAUDE.md`, merge the template's sections into it instead of replacing it.
-- `.claude/rules/*.md`: fill the "Project specifics" sections. Set `paths:` globs to the project's real directories. If a rule doesn't apply (e.g. `api-design.md` in a CLI with no API), ask, then remove it. Add one rule per main language, e.g. `rules/python.md` with `paths: ["**/*.py"]`, covering the idioms and tools this project actually uses.
-- `.claude/settings.json`: add `allow` entries for the exact detected safe commands (test, lint, format, type check, e.g. `Bash(npm run test:*)`). Set `"model"` only if the user chose one. Keep the `hooks` block.
-- `.claude/cct.json`: `guard_level`, `format_on_edit`, `protect_lockfiles` from the answers.
-- `.mcp.json`: add the chosen servers from [mcp-catalog.json](mcp-catalog.json), copying only each entry's `config` object under `mcpServers.<name>`. The catalog may be out of date, so check the vendor's docs for the current URL or package if you can. List every env var the user must set.
+- `.claude/rules/*.md`: fill the "Project specifics" sections. Set `paths:` globs to the project's real directories. If a rule doesn't apply (e.g. `api-design.md` in a CLI with no API), ask, then remove it.
+- **Language rules:** for each main language, copy the matching pack from `.claude/cct/rule-packs/` (`python.md`, `typescript.md`, `go.md`, `rust.md`, `java.md`) into `.claude/rules/`, fill its specifics and narrow its `paths:`. Only write a language rule from scratch when no pack exists, using the same structure.
+- `.claude/settings.json`: add `allow` entries for the exact detected safe commands (test, lint, format, type check, e.g. `Bash(npm run test:*)`). Set `"model"` only if the user chose one. Keep the `hooks` block. Remove `statusLine` if the user doesn't want the status line.
+- `.claude/cct.json`: `guard_level`, `format_on_edit`, `lint_on_edit`, `protect_lockfiles` from the answers.
+- `.mcp.json`: add the chosen servers from [mcp-catalog.json](mcp-catalog.json), copying only each entry's `config` object under `mcpServers.<name>`. The catalog is checked weekly, but if unsure, check the vendor's docs. List every env var the user must set.
 - `.claude/agents/*.md`: set `model:` per the user's answers. Remove agents they don't want.
 - `.gitignore`: make sure `.claude/settings.local.json`, `CLAUDE.local.md`, `.env` and `.env.*` (but not `.env.example`) are ignored.
+
+### 5b. Monorepos
+
+Claude Code loads a `CLAUDE.md` from a subfolder when it works in that folder, so give each package its own short brief instead of one huge root file.
+
+1. List the workspace packages. Ask which ones to set up (multi-select, apps and services pre-selected). With `--defaults`, take up to 10, apps first.
+2. The **root `CLAUDE.md`** gets the overview, shared tooling, workspace-wide commands (e.g. `pnpm -r test`, `turbo run build`), and a **package map**: a table of path → one-line purpose → main language.
+3. Each chosen package gets **`<package>/CLAUDE.md`** from `.claude/cct/CLAUDE.package.md`: its purpose, stack, its own commands (run from the package folder, or with the workspace filter, e.g. `pnpm --filter api test`), and how it depends on other packages.
+4. Scope language rules to the packages that use them, e.g. `paths: ["packages/api/**/*.py"]`.
 
 **Device mode**
 - `~/.claude/CLAUDE.md`: personal preferences for all projects, from `~/.claude/cct/CLAUDE.user.template.md`, merged into any existing file.
@@ -79,14 +100,14 @@ Show a short plan: each file to create or change, with the key values (commands,
 ## 6. Verify
 
 - JSON parses: `python3 -m json.tool <file> >/dev/null` for every JSON you touched.
-- No placeholders left: `grep -rn '{{' CLAUDE.md .claude/` (device: `~/.claude/CLAUDE.md ~/.claude/rules`).
+- No placeholders left: `grep -rn '{{' CLAUDE.md .claude/rules` (plus any package `CLAUDE.md`; device: `~/.claude/CLAUDE.md ~/.claude/rules`).
 - Hooks work: `echo '{"tool_input":{"command":"git status"}}' | python3 .claude/hooks/guard_bash.py` prints nothing; with `"rm -rf /"` it prints a `deny`.
-- If the user agreed, run the detected test or lint command once to confirm it's right.
+- If the user agreed (and always with `--defaults` when it's fast), run the detected test or lint command once to confirm it's right.
 
 ## 7. Finish
 
 1. Delete the marker: `.claude/cct-pending` (project) or `~/.claude/cct-pending` (device).
-2. Ask whether to save the general answers to `~/.claude/cct-preferences.md` for future projects (format in [questions.md](questions.md)). Save only preferences that apply across projects, never project facts.
+2. Unless in `--defaults` mode, ask whether to save the general answers to `~/.claude/cct-preferences.md` for future projects (format in [questions.md](questions.md)). Save only preferences that apply across projects, never project facts.
 3. Tell the user, briefly:
    - what was set up, plus anything you couldn't detect;
    - env vars to set for MCP servers;

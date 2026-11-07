@@ -1,0 +1,7 @@
+{
+  "python-app":    { "claude_md_contains": ["pytest", "ruff"], "rules": ["python.md"] },
+  "node-ts":       { "claude_md_contains": ["pnpm", "vitest"], "rules": ["typescript.md"] },
+  "go-service":    { "claude_md_contains": ["go test"], "rules": ["go.md"] },
+  "pnpm-monorepo": { "claude_md_contains": ["packages/api", "packages/web"], "rules": ["typescript.md"],
+                     "package_claude_md": ["packages/api/CLAUDE.md", "packages/web/CLAUDE.md"] }
+}

@@ -1,0 +1,33 @@
+name: MCP catalog check
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"   # Mondays 06:00 UTC
+  workflow_dispatch:
+  pull_request:
+    paths: [".claude/skills/setup/mcp-catalog.json", "scripts/check_mcp_catalog.py"]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check catalog entries
+        id: check
+        run: python3 scripts/check_mcp_catalog.py | tee report.txt
+
+      - name: Open an issue if something broke
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="MCP catalog: entries need updating"
+          if [ -z "$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number')" ]; then
+            { echo "The weekly check found catalog entries that no longer work:"; echo; echo '```'; cat report.txt; echo '```'; } > body.md
+            gh issue create --title "$title" --body-file body.md
+          fi

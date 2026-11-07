@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""PostToolUse hook for Edit/Write: formats the edited file with the project's own formatter, if one is installed.
+"""PostToolUse hook for Edit/Write: formats the edited file, then lints it and reports problems back to Claude.
 
-Never downloads tools and never fails the edit. Turn off with cct.json "format_on_edit": false.
+Uses only tools already installed in the project or on PATH; never downloads anything.
+Lint problems are sent to Claude (exit code 2) so it fixes them right away.
+Turn off with cct.json "format_on_edit": false / "lint_on_edit": false.
 """
 import os
 import shutil
@@ -9,10 +11,14 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from cct_config import load_config, project_dir, read_input  # noqa: E402
+from cct_config import defer_to_project, load_config, project_dir, read_input  # noqa: E402
 
 PRETTIER_EXT = {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".json", ".css", ".scss",
                 ".less", ".html", ".vue", ".svelte", ".yaml", ".yml", ".graphql"}
+JS_EXT = {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".vue", ".svelte"}
+ESLINT_CONFIGS = ["eslint.config.js", "eslint.config.mjs", "eslint.config.cjs", "eslint.config.ts",
+                  ".eslintrc", ".eslintrc.js", ".eslintrc.cjs", ".eslintrc.json", ".eslintrc.yml", ".eslintrc.yaml"]
+MAX_LINES = 40
 
 
 def find_up(start, rel):
@@ -28,7 +34,8 @@ def find_up(start, rel):
 
 
 def tool(name, start):
-    local = find_up(start, os.path.join(".venv", "bin", name)) or find_up(start, os.path.join("node_modules", ".bin", name))
+    local = (find_up(start, os.path.join(".venv", "bin", name))
+             or find_up(start, os.path.join("node_modules", ".bin", name)))
     return local or shutil.which(name)
 
 
@@ -39,10 +46,9 @@ def formatter_for(path):
         p = find_up(here, os.path.join("node_modules", ".bin", "prettier"))
         if p:
             return [p, "--write", "--log-level", "warn", path]
-        if ext in {".js", ".jsx", ".ts", ".tsx", ".json", ".css"}:
-            b = find_up(here, os.path.join("node_modules", ".bin", "biome"))
-            if b:
-                return [b, "format", "--write", path]
+        b = find_up(here, os.path.join("node_modules", ".bin", "biome"))
+        if b and ext in {".js", ".jsx", ".ts", ".tsx", ".json", ".css"}:
+            return [b, "format", "--write", path]
     if ext == ".py":
         r = tool("ruff", here)
         if r:
@@ -59,20 +65,57 @@ def formatter_for(path):
     return None
 
 
+def linter_for(path):
+    """Linter command for a file. Each linter exits 1 when it found problems."""
+    ext = os.path.splitext(path)[1].lower()
+    here = os.path.dirname(path)
+    if ext in JS_EXT:
+        e = find_up(here, os.path.join("node_modules", ".bin", "eslint"))
+        if e and any(find_up(here, c) for c in ESLINT_CONFIGS):
+            return [e, path]
+        b = find_up(here, os.path.join("node_modules", ".bin", "biome"))
+        if b:
+            return [b, "lint", path]
+    if ext == ".py":
+        r = tool("ruff", here)
+        if r:
+            return [r, "check", "--quiet", path]
+    if ext in {".sh", ".bash"} and shutil.which("shellcheck"):
+        return ["shellcheck", "-f", "gcc", path]
+    return None
+
+
+def run(cmd, timeout=30):
+    try:
+        return subprocess.run(cmd, cwd=project_dir(), capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
 def main():
-    if not load_config().get("format_on_edit", True):
+    if defer_to_project(__file__):
         return
-    tool_input = read_input().get("tool_input") or {}
-    path = tool_input.get("file_path") or ""
+    cfg = load_config()
+    path = (read_input().get("tool_input") or {}).get("file_path") or ""
     if not path or not os.path.isfile(path):
         return
-    cmd = formatter_for(path)
-    if not cmd:
-        return
-    try:
-        subprocess.run(cmd, cwd=project_dir(), capture_output=True, timeout=30)
-    except (OSError, subprocess.SubprocessError):
-        pass
+
+    if cfg.get("format_on_edit", True):
+        cmd = formatter_for(path)
+        if cmd:
+            run(cmd)
+
+    if cfg.get("lint_on_edit", True):
+        cmd = linter_for(path)
+        result = run(cmd) if cmd else None
+        if result is not None and result.returncode == 1:
+            lines = (result.stdout + result.stderr).strip().splitlines()
+            if lines:
+                shown = lines[:MAX_LINES] + ([f"… {len(lines) - MAX_LINES} more lines"] if len(lines) > MAX_LINES else [])
+                rel = os.path.relpath(path, project_dir())
+                print(f"cct lint: {os.path.basename(cmd[0])} found problems in {rel}. Fix them before moving on:\n"
+                      + "\n".join(shown), file=sys.stderr)
+                sys.exit(2)
 
 
 if __name__ == "__main__":

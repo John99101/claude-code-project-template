@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""Merge the kit's settings.json into an existing Claude Code settings file without overwriting the user's values.
+"""Merge the kit's settings into an existing Claude Code settings file, or remove them again.
 
-Usage: merge_settings.py SRC DST [--dry-run]
+Usage: merge_settings.py SRC DST [--dry-run]            add the kit's entries
+       merge_settings.py SRC DST --remove [--dry-run]   remove the kit's hooks and status line
 
+Adding:
 - permissions.allow / ask / deny: adds missing rules, keeps existing ones and their order
 - hooks: adds hook groups whose commands aren't registered yet for that event
-- any other key: set only if DST doesn't have it
+- any other key (e.g. statusLine): set only if DST doesn't have it
+Removing:
+- hook groups made only of the kit's commands, and the kit's statusLine if unchanged
+- permissions are left alone, since the user may rely on them
 DST is backed up to DST.bak-<timestamp> before it is changed.
 """
 import json
@@ -59,22 +64,48 @@ def merge(src, dst):
     return changes
 
 
+def remove(src, dst):
+    changes = []
+    kit = hook_commands([g for groups in (src.get("hooks") or {}).values() for g in groups])
+    hooks = dst.get("hooks") or {}
+    for event in list(hooks):
+        keep = [g for g in hooks[event] if not (hook_commands([g]) and hook_commands([g]) <= kit)]
+        if len(keep) != len(hooks[event]):
+            changes.append(f"hooks.{event} -= {len(hooks[event]) - len(keep)} kit entr{'y' if len(hooks[event]) - len(keep) == 1 else 'ies'}")
+        if keep:
+            hooks[event] = keep
+        else:
+            del hooks[event]
+    if "hooks" in dst and not dst["hooks"]:
+        del dst["hooks"]
+    if "statusLine" in src and dst.get("statusLine") == src["statusLine"]:
+        del dst["statusLine"]
+        changes.append("statusLine removed")
+    return changes
+
+
 def main():
-    args = [a for a in sys.argv[1:] if a != "--dry-run"]
-    dry = "--dry-run" in sys.argv
-    if len(args) != 2:
+    flags = {a for a in sys.argv[1:] if a.startswith("--")}
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if len(args) != 2 or flags - {"--dry-run", "--remove"}:
         raise SystemExit(__doc__)
+    dry, removing = "--dry-run" in flags, "--remove" in flags
     src_path, dst_path = args
+    if removing and not os.path.exists(dst_path):
+        print(f"settings: {dst_path} doesn't exist; nothing to remove")
+        return
     src, dst = load(src_path), load(dst_path)
     existed = os.path.exists(dst_path)
-    changes = merge(src, dst)
+    changes = remove(src, dst) if removing else merge(src, dst)
 
     if not changes:
-        print(f"settings: {dst_path} already up to date")
+        print(f"settings: {dst_path} already up to date" if not removing else f"settings: no kit entries in {dst_path}")
         return
     print(f"settings: {'would update' if dry else 'updated'} {dst_path}")
     for c in changes:
         print(f"  - {c}")
+    if removing:
+        print("  (permission rules were left in place)")
     if dry:
         return
     if existed:

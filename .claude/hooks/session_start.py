@@ -8,18 +8,12 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from cct_config import load_config, project_dir  # noqa: E402
+from cct_config import defer_to_project, home_claude, is_device_copy, load_config, project_dir  # noqa: E402
 
-HOME_CLAUDE = os.path.expanduser("~/.claude")
 SOURCE_REPO = "claude-code-project-template"
 PROJECT_SIGNS = [".git", "package.json", "pyproject.toml", "requirements.txt", "go.mod", "Cargo.toml",
                  "pom.xml", "build.gradle", "build.gradle.kts", "Gemfile", "composer.json", "pubspec.yaml",
                  "Package.swift", "CMakeLists.txt", "Makefile", "deno.json"]
-
-
-def is_global_install():
-    here = os.path.abspath(os.path.dirname(__file__))
-    return here.startswith(os.path.join(HOME_CLAUDE, "hooks"))
 
 
 def is_template_source(proj):
@@ -33,25 +27,22 @@ def is_template_source(proj):
 
 
 def main():
-    if not load_config().get("setup_reminder", True):
+    if defer_to_project(__file__) or not load_config().get("setup_reminder", True):
         return
     proj = project_dir()
     if is_template_source(proj):
         return
-    global_mode = is_global_install()
-    if global_mode and os.path.exists(os.path.join(proj, ".claude", "hooks", "session_start.py")):
-        return  # the project's own copy of this hook handles it
 
     ask = "Don't start until the user agrees."
     if os.path.exists(os.path.join(proj, ".claude", "cct-pending")):
         print("[cct] The Claude Code project kit was installed here but setup isn't finished. "
-              "At the start of your first reply, tell the user in one sentence and offer to run /setup "
-              f"(the project-setup skill). {ask}")
-    elif os.path.exists(os.path.join(HOME_CLAUDE, "cct-pending")):
+              "At the start of your first reply, tell the user in one sentence and offer to run /setup. "
+              f"{ask}")
+    elif os.path.exists(os.path.join(home_claude(), "cct-pending")):
         print("[cct] The Claude Code kit was installed on this device but device setup isn't finished. "
               "At the start of your first reply, tell the user in one sentence and offer to run /setup "
               f"in device mode. {ask}")
-    elif (global_mode
+    elif (is_device_copy(__file__)
           and proj != os.path.expanduser("~")
           and any(os.path.exists(os.path.join(proj, s)) for s in PROJECT_SIGNS)
           and not os.path.exists(os.path.join(proj, "CLAUDE.md"))

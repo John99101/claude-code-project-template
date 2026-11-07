@@ -1,0 +1,43 @@
+name: Setup eval
+
+# Runs /setup for real on the sample projects in tests/fixtures/ and checks the result.
+# Needs an ANTHROPIC_API_KEY repository secret; without it the job is skipped. Uses API credits.
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: Model to run setup with
+        default: sonnet
+  schedule:
+    - cron: "0 7 * * 1"   # Mondays 07:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - name: Skip without an API key
+        if: env.ANTHROPIC_API_KEY == ''
+        run: echo "::notice::Add an ANTHROPIC_API_KEY repository secret to run the setup eval."
+
+      - uses: actions/checkout@v4
+        if: env.ANTHROPIC_API_KEY != ''
+
+      - uses: actions/setup-node@v4
+        if: env.ANTHROPIC_API_KEY != ''
+        with:
+          node-version: "20"
+
+      - name: Install Claude Code
+        if: env.ANTHROPIC_API_KEY != ''
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Run setup on sample projects
+        if: env.ANTHROPIC_API_KEY != ''
+        run: python3 tests/eval_setup.py --model "${{ inputs.model || 'sonnet' }}"

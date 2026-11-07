@@ -1,24 +1,29 @@
 #!/usr/bin/env bash
-# Installs the Claude Code kit into a project (--project) or onto this device (--global).
+# Installs the Claude Code kit into a project (--project) or onto this device (--global), or removes it (--uninstall).
 # Never overwrites existing files. Run /setup in Claude Code afterwards to finish.
 set -euo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="John99101/claude-code-project-template"
+VERSION="$(cat "$SRC/VERSION" 2>/dev/null || echo unknown)"
 MODE=""
+ACTION=install
 TARGET="."
 DRY=0
 
 usage() {
   cat <<EOF
-Usage: install.sh --project [DIR] | --global   [--dry-run]
+Claude Code kit $VERSION
+
+Usage: install.sh --project [DIR] | --global   [--dry-run] [--uninstall]
 
   --project [DIR]  Install into one project (default: current directory).
                    Shared with your team through git.
   --global         Install for every project on this device (~/.claude).
   --dry-run        Show what would happen without changing anything.
+  --uninstall      Remove the kit. Files you changed are kept and listed.
 
-Existing files are never overwritten. Then open Claude Code and run /setup.
+Existing files are never overwritten. After installing, open Claude Code and run /setup.
 EOF
 }
 
@@ -29,6 +34,7 @@ while [ $# -gt 0 ]; do
       if [ $# -gt 1 ] && [ "${2#-}" = "$2" ]; then TARGET="$2"; shift; fi ;;
     --global) MODE=global ;;
     --dry-run) DRY=1 ;;
+    --uninstall) ACTION=uninstall ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
   esac
@@ -40,7 +46,6 @@ if ! command -v python3 >/dev/null 2>&1; then
   echo "python3 is required (the hooks use it). Install it and run again." >&2
   exit 1
 fi
-
 if command -v sha256sum >/dev/null 2>&1; then
   SHA256=(sha256sum)
 else
@@ -77,26 +82,26 @@ put_file() { # src dst, kit-owned file: always (re)written
   echo "  template saved: $2"
 }
 
-merge_settings() { # src dst
-  if [ "$DRY" -eq 1 ]; then
-    python3 "$SRC/scripts/merge_settings.py" "$1" "$2" --dry-run
-  else
-    python3 "$SRC/scripts/merge_settings.py" "$1" "$2"
-  fi
+settings() { # src dst [--remove]
+  local args=("$1" "$2")
+  if [ $# -gt 2 ]; then args+=("$3"); fi
+  if [ "$DRY" -eq 1 ]; then args+=(--dry-run); fi
+  python3 "$SRC/scripts/merge_settings.py" "${args[@]}"
 }
 
 write_marker() { # path
   if [ "$DRY" -eq 0 ]; then cp "$SRC/.claude/cct-pending" "$1"; fi
 }
 
-record_source() { # base_dir subdir
-  local base="$1" dir="$1/$2" commit f
+record_source() { # base_dir cct_dir
+  local base="$1" dir="$2" commit f
   if [ "$DRY" -eq 1 ]; then return 0; fi
   commit="$(git -C "$SRC" rev-parse HEAD 2>/dev/null || echo unknown)"
   mkdir -p "$dir"
   cat > "$dir/source.json" <<EOF
 {
   "repo": "$REPO",
+  "version": "$VERSION",
   "commit": "$commit",
   "mode": "$MODE",
   "installed": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -122,47 +127,112 @@ ensure_gitignore() { # project_dir
   done
 }
 
-if [ "$DRY" -eq 1 ]; then
-  echo "Claude Code kit: dry run ($MODE mode). Nothing will be changed."
-else
-  echo "Claude Code kit: installing ($MODE mode)"
-fi
+uninstall() { # base cct_dir settings_src settings_dst marker kit_dirs...
+  local base="$1" cct="$2" src="$3" dst="$4" marker="$5" hash rel f cur d
+  shift 5
+  if [ ! -f "$cct/manifest.txt" ]; then
+    echo "No kit install found here ($cct/manifest.txt is missing)." >&2
+    exit 1
+  fi
+  local removed=() kept=()
+  while read -r hash rel; do
+    [ -n "$rel" ] || continue
+    f="$base/$rel"
+    [ -e "$f" ] || continue
+    cur="$("${SHA256[@]}" "$f" | cut -d' ' -f1)"
+    if [ "$cur" = "$hash" ]; then
+      removed+=("$f")
+      if [ "$DRY" -eq 0 ]; then rm -f "$f"; fi
+    else
+      kept+=("$f")
+    fi
+  done < "$cct/manifest.txt"
+
+  settings "$src" "$dst" --remove
+  if [ "$DRY" -eq 0 ]; then
+    rm -f "$marker" "$cct/source.json" "$cct/manifest.txt" "$cct/CLAUDE.template.md" "$cct/CLAUDE.user.template.md"
+    for d in "$@"; do
+      if [ -d "$d" ]; then
+        find "$d" -type d -name __pycache__ -prune -exec rm -rf {} +  # left behind by running the hooks
+        find "$d" -depth -type d -empty -delete
+      fi
+    done
+  fi
+
+  echo
+  if [ "$DRY" -eq 1 ]; then echo "Would remove ${#removed[@]} file(s)."; else echo "Removed ${#removed[@]} file(s)."; fi
+  if [ "${#kept[@]}" -gt 0 ]; then
+    echo "Kept ${#kept[@]} file(s) you changed (delete them yourself if you don't need them):"
+    for f in "${kept[@]}"; do echo "  ~ $f"; done
+  fi
+  if [ "$MODE" = project ]; then
+    echo "The kit's lines in .gitignore were left in place."
+  fi
+}
 
 if [ "$MODE" = project ]; then
   T="$(cd "$TARGET" && pwd)"
   if [ "$T" = "$SRC" ]; then echo "Target is the kit itself. Pick a project directory." >&2; exit 1; fi
-  for d in rules commands skills agents hooks; do
+  CCT="$T/.claude/cct"
+  if [ "$ACTION" = uninstall ]; then
+    echo "Claude Code kit: uninstalling from $T$( [ "$DRY" -eq 1 ] && echo ' (dry run)')"
+    uninstall "$T" "$CCT" "$SRC/.claude/settings.json" "$T/.claude/settings.json" "$T/.claude/cct-pending" \
+      "$T/.claude/rules" "$T/.claude/skills" "$T/.claude/agents" "$T/.claude/hooks" "$CCT"
+    exit 0
+  fi
+else
+  C="$HOME/.claude"
+  CCT="$C/cct"
+  if [ "$ACTION" = uninstall ]; then
+    echo "Claude Code kit: uninstalling from $C$( [ "$DRY" -eq 1 ] && echo ' (dry run)')"
+    uninstall "$C" "$CCT" "$SRC/templates/settings.global.json" "$C/settings.json" "$C/cct-pending" \
+      "$C/rules" "$C/skills" "$C/agents" "$C/hooks/cct" "$CCT"
+    exit 0
+  fi
+fi
+
+if [ "$DRY" -eq 1 ]; then
+  echo "Claude Code kit $VERSION: dry run ($MODE mode). Nothing will be changed."
+else
+  echo "Claude Code kit $VERSION: installing ($MODE mode)"
+fi
+
+if [ "$MODE" = project ]; then
+  for d in rules skills agents hooks; do
     copy_tree "$SRC/.claude/$d" "$T/.claude/$d"
   done
+  copy_tree "$SRC/rule-packs" "$CCT/rule-packs"
+  copy_file "$SRC/templates/CLAUDE.package.md" "$CCT/CLAUDE.package.md"
   copy_file "$SRC/.claude/cct.json" "$T/.claude/cct.json"
   copy_file "$SRC/.claude/settings.local.json.example" "$T/.claude/settings.local.json.example"
   copy_file "$SRC/CLAUDE.local.md.example" "$T/CLAUDE.local.md.example"
   copy_file "$SRC/.mcp.json" "$T/.mcp.json"
   if [ -e "$T/CLAUDE.md" ]; then
-    put_file "$SRC/CLAUDE.md" "$T/.claude/cct/CLAUDE.template.md"
+    put_file "$SRC/CLAUDE.md" "$CCT/CLAUDE.template.md"
   else
     copy_file "$SRC/CLAUDE.md" "$T/CLAUDE.md"
   fi
-  merge_settings "$SRC/.claude/settings.json" "$T/.claude/settings.json"
+  settings "$SRC/.claude/settings.json" "$T/.claude/settings.json"
   ensure_gitignore "$T"
   write_marker "$T/.claude/cct-pending"
-  record_source "$T" ".claude/cct"
+  record_source "$T" "$CCT"
   WHERE="$T"
 else
-  C="$HOME/.claude"
-  for d in rules commands skills agents; do
+  for d in rules skills agents; do
     copy_tree "$SRC/.claude/$d" "$C/$d"
   done
   copy_tree "$SRC/.claude/hooks" "$C/hooks/cct"
+  copy_tree "$SRC/rule-packs" "$CCT/rule-packs"
+  copy_file "$SRC/templates/CLAUDE.package.md" "$CCT/CLAUDE.package.md"
   copy_file "$SRC/.claude/cct.json" "$C/cct.json"
   if [ -e "$C/CLAUDE.md" ]; then
-    put_file "$SRC/templates/CLAUDE.user.md" "$C/cct/CLAUDE.user.template.md"
+    put_file "$SRC/templates/CLAUDE.user.md" "$CCT/CLAUDE.user.template.md"
   else
     copy_file "$SRC/templates/CLAUDE.user.md" "$C/CLAUDE.md"
   fi
-  merge_settings "$SRC/templates/settings.global.json" "$C/settings.json"
+  settings "$SRC/templates/settings.global.json" "$C/settings.json"
   write_marker "$C/cct-pending"
-  record_source "$C" "cct"
+  record_source "$C" "$CCT"
   WHERE="any project folder"
 fi
 

@@ -7,7 +7,7 @@ Install it into a project or onto your machine, and Claude finishes the configur
 asking about anything it isn't sure of.
 
 [![CI](https://github.com/John99101/claude-code-project-template/actions/workflows/ci.yml/badge.svg)](https://github.com/John99101/claude-code-project-template/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/version-1.0.0-blue)](CHANGELOG.md)
+[![Release](https://img.shields.io/github/v/release/John99101/claude-code-project-template)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Claude Code](https://img.shields.io/badge/built%20for-Claude%20Code-D97757)](https://docs.claude.com/en/docs/claude-code)
 [![Python 3](https://img.shields.io/badge/hooks-python%203-3776AB)](.claude/hooks/README.md)
@@ -25,9 +25,9 @@ Claude Code is much more useful when it knows your project: how to run the tests
 This kit gives you:
 
 - **A complete, tested structure.** Every part of Claude Code's configuration, organised so each piece loads only when it's needed.
-- **A setup wizard that Claude runs itself.** It reads your project, fills in what it can detect, and asks you short multiple-choice questions about the rest.
+- **A setup wizard that Claude runs itself.** It reads your project, fills in what it can detect, and asks you short multiple-choice questions about the rest. Monorepos get a brief per package.
 - **Memory across projects.** Your answers are saved, so the next project only asks project-specific questions.
-- **Safety by default.** Hooks block destructive commands and secret-file edits before they happen.
+- **Safety and quality by default.** Hooks block destructive commands and secret-file edits, and send lint errors straight back to Claude to fix.
 
 ## Quick start
 
@@ -47,9 +47,11 @@ bash /tmp/cct/install.sh --project ~/code/my-app   # one project, shared with yo
 bash /tmp/cct/install.sh --global                  # every project on this device
 ```
 
-Add `--dry-run` to preview. Existing files are never overwritten; `settings.json` is merged, with a backup. Then open Claude Code and run **`/setup`**.
+Add `--dry-run` to preview. Existing files are never overwritten; `settings.json` is merged, with a backup. Then open Claude Code and run **`/setup`** (or `/setup --defaults` to skip the questions).
 
 **Option 3: new repository.** Click **Use this template** on GitHub. Setup is offered on the first session.
+
+To remove it later: `bash /tmp/cct/install.sh --project ~/code/my-app --uninstall`. Files you changed are kept.
 
 > **Requirements:** Claude Code and `python3`. Tested on Linux and macOS.
 
@@ -70,7 +72,7 @@ Claude  Found: TypeScript + Fastify, pnpm, Vitest, ESLint + Prettier, Postgres, 
               settings: allow pnpm test/lint/typecheck · .mcp.json: GitHub, Postgres
         Apply? › Apply
 
-Claude  Done. Set GITHUB_PERSONAL_ACCESS_TOKEN and DATABASE_URL, then restart Claude Code.
+Claude  Done. Set GITHUB_PERSONAL_ACCESS_TOKEN and DATABASE_URI, then restart Claude Code.
         Save your general answers for future projects? › Yes
 ```
 
@@ -81,14 +83,14 @@ See the [full walkthrough](docs/GUIDE.md#6-a-full-example) for the details.
 | Path | Role |
 |---|---|
 | [`CLAUDE.md`](CLAUDE.md) | **Project brief, loaded every session.** Overview, tech stack, commands table, architecture, conventions. Personal overrides go in `CLAUDE.local.md` (git-ignored). |
-| [`.claude/rules/`](.claude/rules) | **Conventions by topic:** code style, testing, API design, security, git workflow. Path-scoped rules load only for matching files. Setup adds one per language. |
-| [`.claude/commands/`](.claude/commands) | **Slash commands:** `/setup`, `/check`, `/review-changes`, `/commit`, `/template-update`. They pull live shell output (git status, diffs) into the prompt. |
-| [`.claude/skills/`](.claude/skills) | **Know-how that loads on demand:** project setup, remembering preferences, writing tests, debugging, release notes. |
+| [`.claude/rules/`](.claude/rules) | **Conventions by topic:** code style, testing, API design, security, git workflow. Path-scoped rules load only for matching files. |
+| [`rule-packs/`](rule-packs) | **Ready-made language rules** for Python, TypeScript/JavaScript, Go, Rust and Java/Kotlin. Setup installs the ones your project uses. |
+| [`.claude/skills/`](.claude/skills) | **Slash commands and on-demand know-how.** You run `/setup`, `/check`, `/review-changes`, `/commit` and `/template-update`. Claude picks up `remember-preference`, `write-tests`, `debug-issue` and `release-notes` when relevant. |
 | [`.claude/agents/`](.claude/agents) | **Specialist subagents** with their own context, tools and model: planner, reviewer, security auditor, test writer. |
-| [`.claude/hooks/`](.claude/hooks) | **Enforced behaviour:** setup reminder, shell-command guard, secret-file protection, auto-formatting. |
-| [`.claude/settings.json`](.claude/settings.json) | **Permissions, tool access, model and hook registration.** Personal overrides go in `settings.local.json`. |
+| [`.claude/hooks/`](.claude/hooks) | **Enforced behaviour:** setup reminder, shell-command guard, secret-file protection, format and lint on every edit, status line. |
+| [`.claude/settings.json`](.claude/settings.json) | **Permissions, tool access, model, hooks and status line.** Personal overrides go in `settings.local.json`. |
 | [`.mcp.json`](.mcp.json) | **External tools** (GitHub, Jira, Slack, databases…), shared via git. Credentials stay in `${ENV_VARS}`. |
-| [`.claude/cct.json`](.claude/cct.json) | **Kit switches:** guard level, format-on-edit, lockfile protection, setup reminder. |
+| [`.claude/cct.json`](.claude/cct.json) | **Kit switches:** guard level, format and lint on edit, lockfile protection, setup reminder. |
 
 <details>
 <summary><b>Full file tree</b></summary>
@@ -99,19 +101,19 @@ See the [full walkthrough](docs/GUIDE.md#6-a-full-example) for the details.
 ├── CLAUDE.local.md.example       # personal overrides example
 ├── .mcp.json                     # MCP servers (filled by setup)
 ├── .claude/
-│   ├── settings.json             # permissions + hooks
+│   ├── settings.json             # permissions, hooks, status line
 │   ├── settings.local.json.example
 │   ├── cct.json                  # kit switches
 │   ├── rules/                    # code-style, testing, api-design, security, git-workflow
-│   ├── commands/                 # setup, check, review-changes, commit, template-update
-│   ├── skills/                   # project-setup (+ questions, MCP catalog), remember-preference,
-│   │                             # write-tests, debug-issue, release-notes
+│   ├── skills/                   # setup (+ questions, MCP catalog), check, review-changes, commit,
+│   │                             # template-update, remember-preference, write-tests, debug-issue, release-notes
 │   ├── agents/                   # planner, reviewer, security-auditor, test-writer
-│   └── hooks/                    # session_start, guard_bash, protect_files, format_file
-├── install.sh                    # installer (not copied into projects)
-├── scripts/merge_settings.py     # safe settings merger
-├── templates/                    # device-wide CLAUDE.md and settings
-├── tests/test_kit.py             # test suite
+│   └── hooks/                    # session_start, guard_bash, protect_files, format_file, statusline
+├── rule-packs/                   # python, typescript, go, rust, java
+├── templates/                    # device-wide CLAUDE.md + settings, monorepo package brief
+├── install.sh                    # install, update, uninstall (not copied into projects)
+├── scripts/                      # settings merger, MCP catalog check, changelog tool
+├── tests/                        # test suite, setup eval, sample projects
 └── docs/GUIDE.md                 # in-depth guide
 ```
 
@@ -121,14 +123,22 @@ See the [full walkthrough](docs/GUIDE.md#6-a-full-example) for the details.
 
 | | Examples |
 |---|---|
-| **Blocked** | `rm -rf /` or `~`, `mkfs`, `curl … \| sh`, force-push to `main`, editing `.env` or private keys |
-| **Asks first** | `rm -r`, `git reset --hard`, `sudo`, `DROP TABLE`, publishing packages, editing lockfiles or CI |
+| **Blocked** | `rm -rf /` or `~` (also inside `sh -c`, `eval`, `$(…)`), `find / -delete`, `mkfs`, `curl … \| sh`, force-pushing or deleting `main`, editing `.env` or private keys |
+| **Asks first** | `rm -r`, `find … -delete`, `git reset --hard`, `sudo`, `DROP TABLE`, publishing packages, editing lockfiles or CI |
 
 Set `guard_level` to `strict` to also confirm pushes, new dependencies and any deletes. Details are in the [safety model](docs/GUIDE.md#7-the-safety-model).
 
+## Quality checks
+
+| Check | When |
+|---|---|
+| [Test suite](tests/test_kit.py): hooks, installer, uninstaller, settings merge, file formats | Every push, Linux and macOS |
+| [Setup eval](tests/eval_setup.py): runs `/setup` for real on four sample projects | Weekly and on demand (needs an `ANTHROPIC_API_KEY` secret) |
+| [MCP catalog check](scripts/check_mcp_catalog.py): every server URL and package still exists | Weekly; opens an issue if something breaks |
+
 ## Documentation
 
-- **[Guide](docs/GUIDE.md):** why each part exists, the setup flow, configuration, troubleshooting, FAQ
+- **[Guide](docs/GUIDE.md):** why each part exists, the setup flow, configuration, using it with other plugins, troubleshooting, FAQ
 - **[INSTALL.md](INSTALL.md):** install instructions written for Claude
 - **[Hooks](.claude/hooks/README.md):** what each hook does and how to add your own
 - **[Changelog](CHANGELOG.md)**

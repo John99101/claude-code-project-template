@@ -1,0 +1,7 @@
+{
+  "name": "@shop/web",
+  "description": "Storefront web app.",
+  "scripts": { "dev": "vite", "test": "vitest run", "build": "vite build" },
+  "dependencies": { "@shop/api": "workspace:*", "react": "^18.3.0" },
+  "devDependencies": { "vite": "^5.4.0", "vitest": "^2.1.0" }
+}
