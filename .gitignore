@@ -1,0 +1,19 @@
+# Claude Code personal files
+.claude/settings.local.json
+CLAUDE.local.md
+
+# Secrets
+.env
+.env.*
+secrets/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Dependencies / build output
+node_modules/
+__pycache__/
+dist/
+build/
