@@ -8,7 +8,8 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from cct_config import defer_to_project, home_claude, is_device_copy, load_config, project_dir  # noqa: E402
+from cct_config import (defer_to_project, home_claude, is_device_copy, load_config,  # noqa: E402
+                        project_dir, setup_command)
 
 SOURCE_REPO = "claude-code-project-template"
 PROJECT_SIGNS = [".git", "package.json", "pyproject.toml", "requirements.txt", "go.mod", "Cargo.toml",
@@ -34,13 +35,14 @@ def main():
         return
 
     ask = "Don't start until the user agrees."
+    setup = setup_command(__file__)
     if os.path.exists(os.path.join(proj, ".claude", "cct-pending")):
         print("[cct] The Claude Code project kit was installed here but setup isn't finished. "
-              "At the start of your first reply, tell the user in one sentence and offer to run /setup. "
+              f"At the start of your first reply, tell the user in one sentence and offer to run {setup}. "
               f"{ask}")
     elif os.path.exists(os.path.join(home_claude(), "cct-pending")):
         print("[cct] The Claude Code kit was installed on this device but device setup isn't finished. "
-              "At the start of your first reply, tell the user in one sentence and offer to run /setup "
+              f"At the start of your first reply, tell the user in one sentence and offer to run {setup} "
               f"in device mode. {ask}")
     elif (is_device_copy(__file__)
           and proj != os.path.expanduser("~")
@@ -49,7 +51,7 @@ def main():
           and not os.path.exists(os.path.join(proj, ".claude", "CLAUDE.md"))
           and not os.path.exists(os.path.join(proj, ".claude", "cct-ignore"))):
         print("[cct] This project has no CLAUDE.md yet. Near the start of your first reply, offer once to run "
-              "/setup to configure Claude Code for it. If the user declines, offer to create .claude/cct-ignore "
+              f"{setup} to configure Claude Code for it. If the user declines, offer to create .claude/cct-ignore "
               f"so you don't ask again. {ask}")
 
 

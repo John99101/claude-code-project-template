@@ -37,18 +37,40 @@ def load_config():
     return cfg
 
 
+def is_plugin_copy(script_path):
+    """True when this script runs from the installed cct plugin."""
+    root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    if not root:
+        return False
+    return os.path.abspath(script_path).startswith(os.path.abspath(root) + os.sep)
+
+
 def is_device_copy(script_path):
-    """True when this script is the device-wide install in ~/.claude/hooks/."""
+    """True when this script is installed for all projects: device-wide in ~/.claude/hooks/, or as the plugin."""
+    if is_plugin_copy(script_path):
+        return True
     here = os.path.dirname(os.path.abspath(script_path))
     return here.startswith(os.path.join(home_claude(), "hooks") + os.sep)
 
 
+def setup_command(script_path):
+    """How the user invokes setup: plugin skills are namespaced."""
+    return "/cct:setup" if is_plugin_copy(script_path) else "/setup"
+
+
 def defer_to_project(script_path):
-    """A device-wide hook stays silent when the project ships its own copy, so nothing runs twice."""
+    """Keep each hook running once when the kit is installed in several places.
+
+    Precedence: project copy, then device copy (~/.claude/hooks/cct/), then plugin copy.
+    """
     if not is_device_copy(script_path):
         return False
-    own = os.path.join(project_dir(), ".claude", "hooks", os.path.basename(script_path))
-    return os.path.exists(own) and os.path.abspath(own) != os.path.abspath(script_path)
+    name = os.path.basename(script_path)
+    me = os.path.abspath(script_path)
+    candidates = [os.path.join(project_dir(), ".claude", "hooks", name)]
+    if is_plugin_copy(script_path):
+        candidates.append(os.path.join(home_claude(), "hooks", "cct", name))
+    return any(os.path.exists(c) and os.path.abspath(c) != me for c in candidates)
 
 
 def read_input():

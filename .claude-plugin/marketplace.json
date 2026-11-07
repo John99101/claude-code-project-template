@@ -1,0 +1,12 @@
+{
+  "name": "cct-kit",
+  "description": "The Claude Code Project Kit",
+  "owner": { "name": "John99101", "url": "https://github.com/John99101" },
+  "plugins": [
+    {
+      "name": "cct",
+      "source": "./",
+      "description": "Self-configuring Claude Code setup with safety and lint hooks, agents and workflow skills"
+    }
+  ]
+}

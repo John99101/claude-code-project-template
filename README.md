@@ -31,15 +31,23 @@ This kit gives you:
 
 ## Quick start
 
-**Option 1: ask Claude.** In Claude Code, inside your project:
+**Option 1: plugin** (easiest for personal use). In Claude Code:
+
+```text
+/plugin install cct --marketplace John99101/claude-code-project-template
+```
+
+Then run **`/cct:setup`** in any project. Updates arrive through `/plugin`, and `/plugin uninstall cct@cct-kit` removes it. On older Claude Code versions, add the marketplace first with `/plugin marketplace add John99101/claude-code-project-template`, then `/plugin install cct@cct-kit`.
+
+**Option 2: ask Claude.** In Claude Code, inside your project:
 
 ```text
 Install github.com/John99101/claude-code-project-template into this project, following its INSTALL.md
 ```
 
-Or say *"…onto this device for all my projects"*. Claude previews the install, applies it, then walks you through setup.
+Claude previews the install, applies it, then walks you through setup. This puts the config in the repo, so your team shares it.
 
-**Option 2: the install script.**
+**Option 3: the install script.**
 
 ```bash
 git clone --depth 1 https://github.com/John99101/claude-code-project-template /tmp/cct
@@ -49,7 +57,20 @@ bash /tmp/cct/install.sh --global                  # every project on this devic
 
 Add `--dry-run` to preview. Existing files are never overwritten; `settings.json` is merged, with a backup. Then open Claude Code and run **`/setup`** (or `/setup --defaults` to skip the questions).
 
-**Option 3: new repository.** Click **Use this template** on GitHub. Setup is offered on the first session.
+**Option 4: new repository.** Click **Use this template** on GitHub. On the first session, `/setup` offers to clean the copy up (`install.sh --adopt`), removing the kit's own tests, CI and docs, and then sets up your project.
+
+<details>
+<summary><b>Which option should I pick?</b></summary>
+
+| | Plugin | Project install | Device script |
+|---|---|---|---|
+| Commands | `/cct:setup`, `/cct:commit`… | `/setup`, `/commit`… | `/setup`, `/commit`… |
+| Shared with your team | Optional, via `.claude/settings.json` | Yes, committed to git | No |
+| Updates | `/plugin` | `/template-update` | `/template-update` |
+| Status line | No (plugins can't set one) | Yes | Yes |
+| Clashes with a project install | Never (namespaced) | — | Its skills win over the project's |
+
+</details>
 
 To remove it later: `bash /tmp/cct/install.sh --project ~/code/my-app --uninstall`. Files you changed are kept.
 
@@ -111,7 +132,9 @@ See the [full walkthrough](docs/GUIDE.md#6-a-full-example) for the details.
 │   └── hooks/                    # session_start, guard_bash, protect_files, format_file, statusline
 ├── rule-packs/                   # python, typescript, go, rust, java
 ├── templates/                    # device-wide CLAUDE.md + settings, monorepo package brief
-├── install.sh                    # install, update, uninstall (not copied into projects)
+├── .claude-plugin/               # plugin manifest, marketplace entry, icon
+├── plugin/hooks.json             # the plugin's hook registrations
+├── install.sh                    # install, adopt, uninstall (not copied into projects)
 ├── scripts/                      # settings merger, MCP catalog check, changelog tool
 ├── tests/                        # test suite, setup eval, sample projects
 └── docs/GUIDE.md                 # in-depth guide

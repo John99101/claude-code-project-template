@@ -16,12 +16,15 @@ usage() {
 Claude Code kit $VERSION
 
 Usage: install.sh --project [DIR] | --global   [--dry-run] [--uninstall]
+       install.sh --adopt [--dry-run]
 
   --project [DIR]  Install into one project (default: current directory).
                    Shared with your team through git.
   --global         Install for every project on this device (~/.claude).
   --dry-run        Show what would happen without changing anything.
   --uninstall      Remove the kit. Files you changed are kept and listed.
+  --adopt          Run inside a repo created with GitHub's "Use this template": turns the copy into a
+                   normal project install and removes the kit's own development files (tests, CI, docs).
 
 Existing files are never overwritten. After installing, open Claude Code and run /setup.
 EOF
@@ -35,6 +38,7 @@ while [ $# -gt 0 ]; do
     --global) MODE=global ;;
     --dry-run) DRY=1 ;;
     --uninstall) ACTION=uninstall ;;
+    --adopt) ACTION=adopt; MODE=project ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
   esac
@@ -96,7 +100,7 @@ write_marker() { # path
 record_source() { # base_dir cct_dir
   local base="$1" dir="$2" commit f
   if [ "$DRY" -eq 1 ]; then return 0; fi
-  commit="$(git -C "$SRC" rev-parse HEAD 2>/dev/null || echo unknown)"
+  commit="${KIT_COMMIT:-$(git -C "$SRC" rev-parse HEAD 2>/dev/null || echo unknown)}"
   mkdir -p "$dir"
   cat > "$dir/source.json" <<EOF
 {
@@ -170,9 +174,66 @@ uninstall() { # base cct_dir settings_src settings_dst marker kit_dirs...
   fi
 }
 
+# Kit development files that a "Use this template" copy doesn't need.
+DEV_FILES=(install.sh scripts templates rule-packs plugin .claude-plugin
+  tests/test_kit.py tests/eval_setup.py tests/fixtures
+  .github/workflows/ci.yml .github/workflows/eval-setup.yml .github/workflows/mcp-catalog.yml
+  .github/workflows/release.yml .github/ISSUE_TEMPLATE .github/pull_request_template.md
+  docs/GUIDE.md CHANGELOG.md CONTRIBUTING.md VERSION INSTALL.md LICENSE README.md)
+
+adopt() { # turn a template copy (the kit folder itself) into a normal project install
+  local T="$SRC" CCT="$SRC/.claude/cct" f p
+  if git -C "$T" config --get remote.origin.url 2>/dev/null | grep -q "$REPO"; then
+    echo "This is the kit's own repository. --adopt is for repos created from it with \"Use this template\"." >&2
+    exit 1
+  fi
+  echo "Claude Code kit $VERSION: adopting template copy in $T$( [ "$DRY" -eq 1 ] && echo ' (dry run)')"
+  copy_tree "$SRC/rule-packs" "$CCT/rule-packs"
+  copy_file "$SRC/templates/CLAUDE.package.md" "$CCT/CLAUDE.package.md"
+  # The kit files are already in place; record them so /template-update and --uninstall work.
+  while IFS= read -r -d '' f; do COPIED+=("$f"); done < <(find "$T/.claude/rules" "$T/.claude/skills" \
+    "$T/.claude/agents" "$T/.claude/hooks" -type f ! -path '*/__pycache__/*' -print0)
+  for f in .claude/cct.json CLAUDE.md .mcp.json CLAUDE.local.md.example .claude/settings.local.json.example; do
+    if [ -e "$T/$f" ]; then COPIED+=("$T/$f"); fi
+  done
+  ensure_gitignore "$T"
+  for p in "${DEV_FILES[@]}"; do
+    if [ -e "$T/$p" ]; then
+      echo "  - remove $p"
+      if [ "$DRY" -eq 0 ]; then rm -rf "${T:?}/$p"; fi
+    fi
+  done
+  if [ "$DRY" -eq 1 ]; then
+    echo "  + new README.md stub"
+    echo
+    echo "Would record ${#COPIED[@]} kit file(s) and remove the kit's development files listed above."
+    return 0
+  fi
+  printf '# %s\n\nConfigured for Claude Code with the [Claude Code Project Kit](https://github.com/%s).\n' \
+    "$(basename "$T")" "$REPO" > "$T/README.md"
+  for p in tests docs .github/workflows .github; do
+    if [ -d "$T/$p" ]; then find "$T/$p" -depth -type d -empty -delete; fi
+  done
+  if [ ! -e "$T/.claude/cct-pending" ]; then
+    echo "Setup for this Claude Code kit is not finished. Run /setup in Claude Code." > "$T/.claude/cct-pending"
+  fi
+  KIT_COMMIT="template-copy" record_source "$T" "$CCT"
+  echo
+  echo "Recorded ${#COPIED[@]} kit file(s) and removed the kit's development files."
+  echo "Note: the kit's LICENSE was removed too. Add your own project's license if it needs one."
+}
+
+if [ "$ACTION" = adopt ]; then
+  adopt
+  exit 0
+fi
+
 if [ "$MODE" = project ]; then
   T="$(cd "$TARGET" && pwd)"
-  if [ "$T" = "$SRC" ]; then echo "Target is the kit itself. Pick a project directory." >&2; exit 1; fi
+  if [ "$T" = "$SRC" ]; then
+    echo "Target is the kit itself. Pick a project directory, or use --adopt in a \"Use this template\" copy." >&2
+    exit 1
+  fi
   CCT="$T/.claude/cct"
   if [ "$ACTION" = uninstall ]; then
     echo "Claude Code kit: uninstalling from $T$( [ "$DRY" -eq 1 ] && echo ' (dry run)')"

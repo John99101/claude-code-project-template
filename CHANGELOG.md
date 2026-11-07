@@ -4,6 +4,20 @@ All notable changes to this kit. The format follows [Keep a Changelog](https://k
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-07
+
+### Added
+- **Claude Code plugin.** Install with `/plugin install cct --marketplace John99101/claude-code-project-template`. Skills are namespaced (`/cct:setup`, `/cct:commit`…), updates come through `/plugin`, and teams can enable it for everyone in `.claude/settings.json`. The plugin reuses the same skills, agents and hook scripts as the script install; nothing is duplicated.
+- **`install.sh --adopt`:** turns a repo created with "Use this template" into a normal project install. It moves the language rules into `.claude/cct/`, records the manifest so `/template-update` and `--uninstall` work, and removes the kit's own tests, CI workflows, docs and license. `/setup` detects a template copy and offers this first.
+- Plugin validation (`claude plugin validate`) in CI, and a plugin icon.
+
+### Fixed
+- Repos created with "Use this template" carried the kit's development files (tests, CI, release workflow, license) and lacked `.claude/cct/`, so setup couldn't find the language rules.
+- Hooks now run once even when the kit is installed as a plugin *and* via the script (project copy, then device copy, then plugin).
+
+### Documentation
+- Personal skills override project skills with the same name, so a device install shadows a project install's skills. The guide now recommends the plugin for device-wide use, since its skills are namespaced and never clash.
+
 ## [1.1.0] - 2026-11-07
 
 ### Added
@@ -40,6 +54,7 @@ All notable changes to this kit. The format follows [Keep a Changelog](https://k
 - MCP catalog: GitHub, Atlassian (Jira/Confluence), Slack, Postgres, SQLite, Playwright, Context7.
 - Test suite and CI on Linux and macOS.
 
-[Unreleased]: https://github.com/John99101/claude-code-project-template/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/John99101/claude-code-project-template/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/John99101/claude-code-project-template/releases/tag/v1.2.0
 [1.1.0]: https://github.com/John99101/claude-code-project-template/releases/tag/v1.1.0
 [1.0.0]: https://github.com/John99101/claude-code-project-template/releases/tag/v1.0.0

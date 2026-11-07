@@ -9,6 +9,7 @@ Thanks for improving the kit. Small, focused pull requests are easiest to review
 | `.claude/`, `CLAUDE.md`, `.mcp.json`, `CLAUDE.local.md.example` | Yes | What users get. Keep it generic: no project-specific content. |
 | `rule-packs/`, `templates/CLAUDE.package.md` | Yes, into `.claude/cct/` | Language rules and the monorepo package template. Setup copies what a project needs. |
 | `templates/CLAUDE.user.md`, `templates/settings.global.json` | Device installs only | Device-wide `CLAUDE.md` and settings. |
+| `.claude-plugin/`, `plugin/hooks.json` | Plugin installs | Plugin manifest, marketplace entry, icon, and the plugin's hook registrations. The plugin reuses `.claude/skills/`, `.claude/agents/` and `.claude/hooks/`, so keep `plugin/hooks.json` in step with the hooks in `.claude/settings.json` (a test checks this). |
 | `install.sh`, `scripts/`, `VERSION` | No | Installer, settings merger, release and catalog tooling. |
 | `tests/`, `.github/`, `docs/` | No | Tests, sample projects, CI and documentation. |
 
@@ -19,6 +20,8 @@ python3 tests/test_kit.py -v              # fast tests; your real ~/.claude is n
 shellcheck -S warning install.sh          # lint the installer
 python3 scripts/check_mcp_catalog.py      # check every MCP catalog entry still exists
 python3 tests/eval_setup.py python-app    # run /setup for real on a sample project (uses API credits)
+claude plugin validate .                  # check the plugin and marketplace manifests
+claude --plugin-dir .                     # try the plugin in a session without installing it
 bash install.sh --project /tmp/demo --dry-run
 ```
 
@@ -36,7 +39,7 @@ bash install.sh --project /tmp/demo --dry-run
 ## Releasing
 
 1. Move the **Unreleased** entries in `CHANGELOG.md` under a new `## [x.y.z] - date` heading and add its link at the bottom.
-2. Set `VERSION` to `x.y.z` and commit.
+2. Set `VERSION` and the `version` in `.claude-plugin/plugin.json` to `x.y.z` (a test checks they match), and commit. Plugin users only get the update once `plugin.json`'s version changes.
 3. `git tag -a vx.y.z -m vx.y.z && git push origin vx.y.z`
 
 The release workflow checks the tag matches `VERSION`, runs the tests, and publishes the GitHub release with that changelog section as notes.

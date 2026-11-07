@@ -34,6 +34,10 @@ If the arguments contain `--defaults`, don't ask any questions and don't wait fo
 
 If both markers exist, ask which to do first. Device first is usually better because its answers feed project mode. With `--defaults`, do project mode.
 
+**Repo created with "Use this template"?** If the project root has `install.sh` and `rule-packs/` but no `.claude/cct/source.json`, it's a raw copy of the kit, including the kit's own tests, CI, docs and license. Before anything else, show the user the output of `bash install.sh --adopt --dry-run` and, once they agree, run `bash install.sh --adopt`. It turns the copy into a normal install (language rules into `.claude/cct/`, a manifest for updates and uninstall) and removes the kit's development files. With `--defaults`, run it without asking.
+
+**Running as the `cct` plugin** (you were invoked as `/cct:setup`)? Then there's no installer: device mode writes `~/.claude/CLAUDE.md`, `~/.claude/cct.json` and preferences as usual, and project mode creates the project's `CLAUDE.md` and `.claude/rules/` by copying the templates from the plugin (`${CLAUDE_PLUGIN_ROOT}/CLAUDE.md`, `${CLAUDE_PLUGIN_ROOT}/.claude/rules/`). Don't copy skills, agents or hooks into the project; the plugin provides them. Plugins can't set a status line, so skip that question.
+
 ## 1. Load what's known
 
 Read, if present:
@@ -41,7 +45,12 @@ Read, if present:
 - `~/.claude/CLAUDE.md` and `~/.claude/rules/`: device-wide instructions.
 - Project: `CLAUDE.md`, `.claude/cct/CLAUDE.template.md` (the installer saves the template there when a `CLAUDE.md` already existed), `CLAUDE.local.md`, `AGENTS.md`, `.cursorrules`, `.cursor/rules/`, `.github/copilot-instructions.md`, `CONTRIBUTING.md`, `README.md`. Carry over the conventions they contain.
 
-The kit's extra files live in `.claude/cct/` (device: `~/.claude/cct/`): `rule-packs/` (ready-made language rules) and `CLAUDE.package.md` (template for monorepo packages).
+The kit's extra files are `rule-packs/` (ready-made language rules) and `CLAUDE.package.md` (template for monorepo packages). Look for them in this order, and use the first that exists:
+1. `.claude/cct/` (project install)
+2. `~/.claude/cct/` (device install)
+3. `${CLAUDE_PLUGIN_ROOT}/rule-packs/` and `${CLAUDE_PLUGIN_ROOT}/templates/CLAUDE.package.md` (plugin install; if that path still starts with `${`, this isn't the plugin)
+
+Below, `.claude/cct/` means whichever location you found.
 
 ## 2. Detect (project mode)
 

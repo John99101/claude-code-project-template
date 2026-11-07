@@ -11,7 +11,7 @@ This guide explains **why the kit exists, how each part works, and how to tune i
 6. [A full example](#6-a-full-example)
 7. [The safety model](#7-the-safety-model)
 8. [Configuration reference](#8-configuration-reference)
-9. [Project vs device installs](#9-project-vs-device-installs)
+9. [Plugin, project and device installs](#9-plugin-project-and-device-installs)
 10. [Using the kit with other plugins (e.g. ECC)](#10-using-the-kit-with-other-plugins-eg-ecc)
 11. [Updating, customising and removing](#11-updating-customising-and-removing)
 12. [How the kit is tested](#12-how-the-kit-is-tested)
@@ -244,20 +244,47 @@ To turn off the status line, remove `statusLine` from `settings.json` (or answer
 | `.claude/cct/CLAUDE.template.md` | The kit's template, saved when you already had a `CLAUDE.md` |
 | `~/.claude/cct-preferences.md` | Your saved answers, reused across projects. Edit freely. |
 
-## 9. Project vs device installs
+## 9. Plugin, project and device installs
 
-| | Project (`--project`) | Device (`--global`) |
-|---|---|---|
-| Installs into | `<project>/.claude/`, `CLAUDE.md`, `.mcp.json` | `~/.claude/` (hooks in `~/.claude/hooks/cct/`) |
-| Shared via git | Yes | No |
-| Setup | Once per project | Once for your preferences; then every project without a `CLAUDE.md` gets offered setup once |
-| Best for | Teams, or projects that need specific config | Your personal defaults everywhere |
+| | Plugin | Project (`--project`) | Device script (`--global`) |
+|---|---|---|---|
+| Install | `/plugin install cct --marketplace John99101/claude-code-project-template` | `install.sh --project <dir>` | `install.sh --global` |
+| Lives in | Claude Code's plugin cache | `<project>/.claude/`, `CLAUDE.md`, `.mcp.json` | `~/.claude/` (hooks in `~/.claude/hooks/cct/`) |
+| Commands | `/cct:setup`, `/cct:commit`, `/cct:check`… | `/setup`, `/commit`, `/check`… | `/setup`, `/commit`, `/check`… |
+| Shared via git | Optional (see below) | Yes | No |
+| Updates | `/plugin` | `/template-update` | `/template-update` |
+| Remove | `/plugin uninstall cct@cct-kit` | `install.sh --project <dir> --uninstall` | `install.sh --global --uninstall` |
+| Status line | Not possible: plugins can only set `agent` and `subagentStatusLine` | Yes | Yes |
+| Best for | Your personal toolkit in every project | Teams, or projects that need specific config | Personal use when you want plain files you can edit |
 
-**Using both:** device install for your personal rules and preferences, project install for team-shared config. Claude Code merges them, with project settings taking precedence. **Hooks never run twice:** when a project has its own copy of a kit hook, the device-wide copy steps aside for that project.
+**What setup writes in each case:** the plugin provides the skills, agents and hooks. `/cct:setup` still writes the project's `CLAUDE.md` and `.claude/rules/`, because plugins can't ship rules or project context.
+
+**Enabling the plugin for a whole team:** add this to the project's `.claude/settings.json`, and everyone who opens the repo gets the plugin offered:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "cct-kit": { "source": { "source": "github", "repo": "John99101/claude-code-project-template" } }
+  },
+  "enabledPlugins": { "cct@cct-kit": true }
+}
+```
+
+**Combining installs:** hooks never run twice. A project's own copy wins, then the device copy, then the plugin. **Skills are different:** Claude Code gives *personal* skills priority over *project* skills with the same name, so with a device script install, `/setup` and `/commit` run the device copies even in a project with its own customised ones. Plugin skills are namespaced and never clash, which is why the plugin is the better choice for device-wide use.
+
+### Repos created with "Use this template"
+
+A repo created from GitHub's template button gets a copy of the whole kit repository, including the kit's own tests, CI and release workflows, changelog and license. On the first `/setup`, Claude detects this and offers `install.sh --adopt`, which:
+
+- moves the language rules and package template into `.claude/cct/`, where setup expects them;
+- records a manifest, so `/template-update` and `--uninstall` work later;
+- removes the kit's development files and replaces the README with a stub for your project.
+
+It refuses to run in the kit's own repository.
 
 ## 10. Using the kit with other plugins (e.g. ECC)
 
-The kit uses plain project and user configuration, not Claude Code's plugin system, so it works alongside plugins such as **Everything Claude Code (ECC)**. A few things to know when combining them:
+Whether installed by script or as the `cct` plugin, the kit works alongside other plugins such as **Everything Claude Code (ECC)**. A few things to know when combining them:
 
 | Area | What happens | Recommendation |
 |---|---|---|

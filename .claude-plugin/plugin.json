@@ -1,0 +1,19 @@
+{
+  "name": "cct",
+  "displayName": "Claude Code Project Kit",
+  "version": "1.2.0",
+  "description": "Self-configuring setup: /cct:setup detects your stack, asks about your preferences, and writes CLAUDE.md, rules and settings. Adds safety and lint hooks, review and test agents, and workflow skills.",
+  "author": { "name": "John99101", "url": "https://github.com/John99101" },
+  "homepage": "https://github.com/John99101/claude-code-project-template#readme",
+  "repository": "https://github.com/John99101/claude-code-project-template",
+  "license": "MIT",
+  "keywords": ["setup", "configuration", "hooks", "safety", "rules", "agents", "monorepo"],
+  "skills": ["./.claude/skills/"],
+  "agents": [
+    "./.claude/agents/planner.md",
+    "./.claude/agents/reviewer.md",
+    "./.claude/agents/security-auditor.md",
+    "./.claude/agents/test-writer.md"
+  ],
+  "hooks": "./plugin/hooks.json"
+}

@@ -366,6 +366,109 @@ class UninstallTest(TempDirCase):
         self.assertIn("No kit install found", r.stderr)
 
 
+class PluginDedupTest(TempDirCase):
+    """As a plugin, hooks give way to a project copy and to a device copy."""
+
+    def setUp(self):
+        super().setUp()
+        self.plugin_root = os.path.join(self.dir, "plugin-cache", "cct")
+        shutil.copytree(os.path.join(ROOT, ".claude"), os.path.join(self.plugin_root, ".claude"))
+        self.plugin_hooks = os.path.join(self.plugin_root, ".claude", "hooks")
+        self.project = os.path.join(self.dir, "proj")
+        os.makedirs(self.project)
+        self.env.update(CLAUDE_PLUGIN_ROOT=self.plugin_root, CLAUDE_PROJECT_DIR=self.project)
+        self.rm = {"tool_input": {"command": "rm -rf /"}}
+
+    def test_plugin_guard_works_alone(self):
+        self.assertEqual(self.decision("guard_bash.py", self.rm, self.plugin_hooks), "deny")
+
+    def test_plugin_defers_to_device_install(self):
+        shutil.copytree(HOOKS, os.path.join(self.dir, ".claude", "hooks", "cct"))
+        self.assertEqual(self.decision("guard_bash.py", self.rm, self.plugin_hooks), "allow")
+
+    def test_plugin_defers_to_project_install(self):
+        shutil.copytree(HOOKS, os.path.join(self.project, ".claude", "hooks"))
+        self.assertEqual(self.decision("guard_bash.py", self.rm, self.plugin_hooks), "allow")
+
+    def test_plugin_offers_namespaced_setup(self):
+        os.makedirs(os.path.join(self.project, ".git"))
+        out = self.hook("session_start.py", {}, self.plugin_hooks)
+        self.assertIn("/cct:setup", out)
+
+
+class PluginManifestTest(unittest.TestCase):
+    def load(self, rel):
+        with open(os.path.join(ROOT, rel)) as f:
+            return json.load(f)
+
+    def test_version_matches(self):
+        self.assertEqual(self.load(".claude-plugin/plugin.json")["version"], changelog_section.read_version())
+
+    def test_component_paths_exist(self):
+        manifest = self.load(".claude-plugin/plugin.json")
+        paths = manifest["skills"] + manifest["agents"] + [manifest["hooks"]]
+        for rel in paths:
+            with self.subTest(path=rel):
+                self.assertTrue(rel.startswith("./"))
+                self.assertTrue(os.path.exists(os.path.join(ROOT, rel)), rel)
+        listed = sorted(os.path.basename(p) for p in manifest["agents"])
+        self.assertEqual(listed, sorted(os.listdir(os.path.join(ROOT, ".claude", "agents"))), "every agent is listed")
+
+    def test_plugin_hooks_match_project_hooks(self):
+        def scripts(settings):
+            return sorted(h["command"].rsplit("/", 1)[-1].strip('"')
+                          for groups in settings["hooks"].values() for g in groups for h in g["hooks"])
+        self.assertEqual(scripts(self.load("plugin/hooks.json")), scripts(self.load(".claude/settings.json")))
+        for cmd in json.dumps(self.load("plugin/hooks.json")).split("${CLAUDE_PLUGIN_ROOT}/")[1:]:
+            self.assertTrue(os.path.exists(os.path.join(ROOT, cmd.split("\\")[0])), cmd)
+
+    def test_marketplace_lists_the_plugin(self):
+        market = self.load(".claude-plugin/marketplace.json")
+        self.assertEqual([p["name"] for p in market["plugins"]], [self.load(".claude-plugin/plugin.json")["name"]])
+        self.assertEqual(market["plugins"][0]["source"], "./")
+
+
+class AdoptTest(TempDirCase):
+    """install.sh --adopt turns a "Use this template" copy into a normal project install."""
+
+    def make_copy(self):
+        files = subprocess.run(["git", "-C", ROOT, "ls-files"], capture_output=True, text=True, check=True).stdout.split()
+        self.copy = os.path.join(self.dir, "my-new-app")
+        for rel in files:
+            dst = os.path.join(self.copy, rel)
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copy2(os.path.join(ROOT, rel), dst)
+
+    def adopt(self, *args):
+        return subprocess.run(["bash", os.path.join(self.copy, "install.sh"), "--adopt", *args],
+                              capture_output=True, text=True, env=self.env, timeout=60)
+
+    def test_adopt_cleans_up_and_records_install(self):
+        self.make_copy()
+        dry = self.adopt("--dry-run")
+        self.assertEqual(dry.returncode, 0, dry.stderr)
+        self.assertTrue(os.path.exists(os.path.join(self.copy, "tests", "test_kit.py")))
+
+        r = self.adopt()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        for rel in ["install.sh", "tests", "docs", ".github", "rule-packs", "CHANGELOG.md", "LICENSE", ".claude-plugin"]:
+            self.assertFalse(os.path.exists(os.path.join(self.copy, rel)), rel)
+        for rel in [".claude/cct/rule-packs/python.md", ".claude/cct/CLAUDE.package.md", ".claude/cct/manifest.txt",
+                    ".claude/cct/source.json", ".claude/skills/setup/SKILL.md", ".claude/cct-pending", "CLAUDE.md"]:
+            self.assertTrue(os.path.exists(os.path.join(self.copy, rel)), rel)
+        with open(os.path.join(self.copy, "README.md")) as f:
+            self.assertIn("my-new-app", f.read())
+
+    def test_adopt_refuses_in_the_kit_repo(self):
+        self.make_copy()
+        subprocess.run(["git", "init", "-q", self.copy], check=True)
+        subprocess.run(["git", "-C", self.copy, "remote", "add", "origin",
+                        "https://github.com/John99101/claude-code-project-template.git"], check=True)
+        r = self.adopt()
+        self.assertNotEqual(r.returncode, 0)
+        self.assertTrue(os.path.exists(os.path.join(self.copy, "install.sh")))
+
+
 class ReleaseToolingTest(unittest.TestCase):
     def test_version_has_changelog_section(self):
         version = changelog_section.read_version()

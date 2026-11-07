@@ -29,3 +29,14 @@ jobs:
 
       - name: Run tests
         run: python3 tests/test_kit.py -v
+
+      - uses: actions/setup-node@v4
+        if: runner.os == 'Linux'
+        with:
+          node-version: "20"
+
+      - name: Validate plugin and marketplace
+        if: runner.os == 'Linux'
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          claude plugin validate .
