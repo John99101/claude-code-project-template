@@ -1,10 +1,12 @@
 # Claude Code personal files
 .claude/settings.local.json
 CLAUDE.local.md
+*.bak-*
 
 # Secrets
 .env
 .env.*
+!.env.example
 secrets/
 
 # OS / editor
@@ -12,8 +14,6 @@ secrets/
 .vscode/
 .idea/
 
-# Dependencies / build output
-node_modules/
+# Python
 __pycache__/
-dist/
-build/
+*.pyc

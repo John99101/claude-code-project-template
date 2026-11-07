@@ -1,27 +1,52 @@
-# Project: <name>
+# {{PROJECT_NAME}}
 
-<One or two sentences on what this project is.>
+<!-- cct: Loaded at the start of every Claude Code session in this project. /setup fills in the {{…}} parts.
+     Keep this file under ~150 lines; topic details belong in .claude/rules/. -->
+
+{{ONE_PARAGRAPH_OVERVIEW: what this project is, who uses it, what matters most}}
+
+## Tech stack
+
+- Languages: {{LANGUAGES}}
+- Frameworks: {{FRAMEWORKS}}
+- Package manager: {{PACKAGE_MANAGER}}
+- Data and services: {{DATABASES_AND_SERVICES}}
 
 ## Commands
 
-- Install: `<install command>`
-- Run: `<run command>`
-- Test: `<test command>`
-- Lint/format: `<lint command>`
+| Task | Command |
+|---|---|
+| Install | `{{INSTALL_CMD}}` |
+| Run (dev) | `{{RUN_CMD}}` |
+| Test (all) | `{{TEST_CMD}}` |
+| Test (one) | `{{TEST_ONE_CMD}}` |
+| Lint | `{{LINT_CMD}}` |
+| Type check | `{{TYPECHECK_CMD}}` |
+| Format | `{{FORMAT_CMD}}` |
+| Build | `{{BUILD_CMD}}` |
 
-## Layout
+## Architecture
 
-- `src/` — application code
-- `tests/` — tests, mirroring `src/`
-- `docs/` — design notes and references
+{{ARCHITECTURE: main folders and what lives where, entry points, how a request or data flows through the system, key design decisions}}
 
 ## Conventions
 
-- Run the tests after every change and fix failures before finishing.
-- Keep changes small and focused; don't refactor unrelated code.
-- Never commit secrets. Use `.env` (git-ignored) for local config.
+Topic rules in `.claude/rules/` load automatically; some load only when you work on matching files:
 
-## Notes for Claude
+- `code-style.md` — formatting, naming, structure
+- `testing.md` — how tests are written and run
+- `api-design.md` — API conventions
+- `security.md` — secrets, input handling, dependencies
+- `git-workflow.md` — branches, commits, pull requests
 
-- Ask before adding new dependencies.
-- Use the `reviewer` agent to review changes before committing.
+{{PROJECT_CONVENTIONS: anything important that isn't obvious from the code}}
+
+## Working agreements
+
+{{WORKING_AGREEMENTS: from the user's answers, e.g. autonomy level, what to ask before doing}}
+
+## Tools for Claude
+
+- Commands: `/setup` re-tunes this config · `/check` runs lint and tests · `/review-changes` reviews the diff · `/commit` commits in house style · `/template-update` updates the kit
+- Agents: `planner`, `reviewer`, `test-writer`, `security-auditor`
+- Personal, uncommitted notes: `CLAUDE.local.md` (see `CLAUDE.local.md.example`)
