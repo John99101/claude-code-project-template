@@ -1,6 +1,6 @@
 ---
 description: Update this kit from the latest template on GitHub, keeping your customisations
-allowed-tools: Bash(git clone:*), Bash(gh repo clone:*), Bash(sha256sum:*), Bash(diff:*)
+allowed-tools: Bash(git clone:*), Bash(gh repo clone:*), Bash(sha256sum:*), Bash(shasum:*), Bash(diff:*)
 ---
 
 Update the installed Claude Code kit without losing local changes.

@@ -41,6 +41,12 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
+if command -v sha256sum >/dev/null 2>&1; then
+  SHA256=(sha256sum)
+else
+  SHA256=(shasum -a 256)  # macOS
+fi
+
 COPIED=()
 SKIPPED=()
 
@@ -98,7 +104,7 @@ record_source() { # base_dir subdir
 EOF
   touch "$dir/manifest.txt"  # append only: keeps entries from earlier installs
   for f in "${COPIED[@]+"${COPIED[@]}"}"; do
-    (cd "$base" && sha256sum "${f#"$base"/}") >> "$dir/manifest.txt"
+    (cd "$base" && "${SHA256[@]}" "${f#"$base"/}") >> "$dir/manifest.txt"
   done
 }
 
