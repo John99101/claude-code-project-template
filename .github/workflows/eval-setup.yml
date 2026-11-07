@@ -32,13 +32,13 @@ jobs:
         if: env.HAS_LOGIN != 'true'
         run: echo '::notice::Add a CLAUDE_CODE_OAUTH_TOKEN (from claude setup-token) or ANTHROPIC_API_KEY repository secret to run the setup eval.'
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: env.HAS_LOGIN == 'true'
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: env.HAS_LOGIN == 'true'
         with:
-          node-version: "20"
+          node-version: "24"
 
       - name: Install Claude Code
         if: env.HAS_LOGIN == 'true'
