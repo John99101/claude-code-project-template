@@ -141,6 +141,11 @@ def main():
         for name in names:
             project = prepare(name, workdir)
             result = run_setup(project, args.model)
+            message = str(result.get("result", ""))
+            if result.get("is_error") and any(w in message.lower() for w in ("auth", "login", "api key", "credit")):
+                print(f"Claude Code couldn't log in, so no setup ran:\n  {message[:400]}\n"
+                      "Check your login (`claude` in a terminal) or the CLAUDE_CODE_OAUTH_TOKEN / ANTHROPIC_API_KEY secret.")
+                sys.exit(2)
             total_cost += float(result.get("total_cost_usd") or 0)
             problems = check_result(project, expectations[name])
             if result.get("is_error"):

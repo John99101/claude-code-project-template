@@ -46,7 +46,13 @@ jobs:
 
       - name: Run setup on sample projects
         if: env.HAS_LOGIN == 'true'
-        run: python3 tests/eval_setup.py --model "${{ inputs.model || 'sonnet' }}"
+        run: |
+          # A token copied from a terminal often picks up a line break where the terminal wrapped it.
+          export CLAUDE_CODE_OAUTH_TOKEN="$(printf '%s' "$CLAUDE_CODE_OAUTH_TOKEN" | tr -d '[:space:]')"
+          export ANTHROPIC_API_KEY="$(printf '%s' "$ANTHROPIC_API_KEY" | tr -d '[:space:]')"
+          [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] || unset CLAUDE_CODE_OAUTH_TOKEN
+          [ -n "$ANTHROPIC_API_KEY" ] || unset ANTHROPIC_API_KEY
+          python3 tests/eval_setup.py --model "${{ inputs.model || 'sonnet' }}"
 
       # GitHub pauses scheduled workflows after 60 days without repository activity.
       # Re-enabling the workflow on every run keeps it active.
