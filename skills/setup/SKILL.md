@@ -80,7 +80,7 @@ Run read-only commands only. Ask before running install, build or test commands 
 
 ## 3. Ask
 
-Use the question bank in [questions.md](questions.md). Pick only questions whose answers you couldn't detect and that aren't saved. A first-time project typically takes 2–3 rounds; a re-tune often takes 1.
+Use the question bank in [questions.md](questions.md) and follow its "How to write each question" rules: evidence first, a `description` on every option, `preview` where it says so. Pick only questions whose answers you couldn't detect and that aren't saved. A first-time project typically takes 2–3 rounds; a re-tune often takes 1. A saved `agent_models: planner opus, others inherit` from older versions means **Kit defaults**.
 
 ## 4. Show the plan and confirm
 
