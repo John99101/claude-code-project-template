@@ -4,6 +4,19 @@ All notable changes to this kit. The format follows [Keep a Changelog](https://k
 
 ## [Unreleased]
 
+### Added
+- **Quick or Thorough setup.** `/setup` first asks how thorough to be. Quick asks about 10 questions; Thorough asks about 25, adding plan-first, model, formatting, commit and branch style, deploy access, docs duties and supported versions.
+- **Never-edit paths:** new `protected_paths` setting in `cct.json` (e.g. `["vendor/", "src/gen/**"]`). The file guard blocks edits there, and setup offers the generated or vendored code it finds.
+- **Done checklist:** setup asks which checks must pass before Claude calls a task done, and writes them to a new "Before you say a task is done" section in `CLAUDE.md`. `CLAUDE.md` also records supported versions.
+- **Question eval:** `tests/eval_questions.py` runs a read-only dry run of `/setup` on the sample projects and checks the questions it would ask. It runs weekly on GitHub after the setup eval.
+
+### Changed
+- **More informative setup questions.** Each question opens with what setup found and where, names the file the answer goes to, and gives every option a description of its effect and trade-off. Guard level, commit style, agent models and the status line show previews. Project questions offer a sourced best guess first. Filler such as "No saved preference found" is gone.
+- The rules question always keeps code-style, git-workflow and security, so it fits in four options.
+
+### Fixed
+- The agent-models option said "others inherit", but test-writer runs on Sonnet.
+
 ## [2.0.0] - 2026-11-07
 
 ### Changed

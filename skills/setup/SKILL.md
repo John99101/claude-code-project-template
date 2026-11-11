@@ -22,7 +22,7 @@ Arguments from the user: $ARGUMENTS
 
 ### Non-interactive mode (`--defaults`)
 
-If the arguments contain `--defaults`, don't ask any questions and don't wait for plan approval. Use the detected value, or the saved preference, or the **recommended** option from the question bank. Skip MCP servers unless the stack clearly needs one, and don't save preferences. Everything else, including verification, runs as normal. End with a list of every choice made by default. This mode exists for automated tests and for users who want a quick start.
+If the arguments contain `--defaults`, don't ask any questions and don't wait for plan approval. Use the detected value, or the saved preference, or the **recommended** option from the question bank. Skip MCP servers unless the stack clearly needs one, leave `protected_paths` empty, and don't save preferences. Everything else, including verification, runs as normal. End with a list of every choice made by default. This mode exists for automated tests and for users who want a quick start.
 
 ## 0. Pick the mode
 
@@ -80,7 +80,9 @@ Run read-only commands only. Ask before running install, build or test commands 
 
 ## 3. Ask
 
-Use the question bank in [questions.md](questions.md) and follow its "How to write each question" rules: evidence first, a `description` on every option, `preview` where it says so. Pick only questions whose answers you couldn't detect and that aren't saved. A first-time project typically takes 2–3 rounds; a re-tune often takes 1. A saved `agent_models: planner opus, others inherit` from older versions means **Kit defaults**.
+Use the question bank in [questions.md](questions.md) and follow its "How to write each question" rules: evidence first, a `description` on every option, `preview` where it says so. Pick only questions whose answers you couldn't detect and that aren't saved.
+
+Ask the **depth** question first, on its own: **Quick** asks only the questions tagged Quick, and **Thorough** asks every question that applies. For questions you skip, use the detected value or the recommended answer, as in `--defaults` mode, and list them in the plan so the user can change any of them. A Quick first-time project typically takes 2–3 rounds and a Thorough one 5–7; a re-tune often takes 1. A saved `agent_models: planner opus, others inherit` from older versions means **Kit defaults**.
 
 ## 4. Show the plan and confirm
 
@@ -89,11 +91,11 @@ Show a short plan: each file to create or change, with the key values (commands,
 ## 5. Write
 
 **Project mode**
-- `CLAUDE.md`: fill every `{{…}}`. Delete table rows for commands that don't exist. If the user had a `CLAUDE.md`, merge the template's sections into it instead of replacing it.
+- `CLAUDE.md`: fill every `{{…}}`. Delete table rows for commands that don't exist. "Before you say a task is done" lists the done-checklist commands as bullets (without an answer: what CI runs, or else tests and lint). "Working agreements" gets the deploy and docs answers. If the user had a `CLAUDE.md`, merge the template's sections into it instead of replacing it.
 - `.claude/rules/*.md`: fill the "Project specifics" sections. Set `paths:` globs to the project's real directories. If a rule doesn't apply (e.g. `api-design.md` in a CLI with no API), ask, then remove it.
 - **Language rules:** for each main language, copy the matching pack from `.claude/cct/rule-packs/` (`python.md`, `typescript.md`, `go.md`, `rust.md`, `java.md`) into `.claude/rules/`, fill its specifics and narrow its `paths:`. Only write a language rule from scratch when no pack exists, using the same structure.
 - `.claude/settings.json`: add `allow` entries for the exact detected safe commands (test, lint, format, type check, e.g. `Bash(npm run test:*)`). Set `"model"` only if the user chose one. Keep the `hooks` block. Remove `statusLine` if the user doesn't want the status line.
-- `.claude/cct.json`: `guard_level`, `format_on_edit`, `lint_on_edit`, `protect_lockfiles` from the answers.
+- `.claude/cct.json`: `guard_level`, `format_on_edit`, `lint_on_edit`, `protect_lockfiles` and `protected_paths` (a list of project-relative globs, folders as `dir/`) from the answers.
 - `.mcp.json`: add the chosen servers from [mcp-catalog.json](mcp-catalog.json), copying only each entry's `config` object under `mcpServers.<name>`. The catalog is checked weekly, but if unsure, check the vendor's docs. List every env var the user must set.
 - `.claude/agents/*.md`: set `model:` per the user's answers. Remove agents they don't want.
 - `.gitignore`: make sure `.claude/settings.local.json`, `CLAUDE.local.md`, `.env` and `.env.*` (but not `.env.example`) are ignored.

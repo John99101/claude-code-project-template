@@ -22,6 +22,7 @@ WINDOWS = os.name == "nt"
 sys.path.insert(0, os.path.join(ROOT, "tests"))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 import changelog_section  # noqa: E402
+import eval_questions  # noqa: E402
 import eval_setup  # noqa: E402
 import kitlib  # noqa: E402
 import merge_settings  # noqa: E402
@@ -202,6 +203,35 @@ class ProtectFilesTest(TempDirCase):
             with self.subTest(path=rel):
                 payload = {"tool_input": {"file_path": self.p(*rel.split("/"))}}
                 self.assertEqual(self.decision("protect_files.py", payload), expected)
+
+    def test_protected_paths(self):
+        self.write_cct(protected_paths=["vendor/", "src/gen/**", "*.pb.go", "./docs/api", "", 7])
+        cases = {
+            "vendor/lib/a.go": "deny",
+            "src/gen/client.ts": "deny",
+            "pkg/api/user.pb.go": "deny",
+            "docs/api/index.md": "deny",
+            "src/app.ts": "allow",
+            "vendored.go": "allow",
+            "docs/apis.md": "allow",
+        }
+        for rel, expected in cases.items():
+            with self.subTest(path=rel):
+                payload = {"tool_input": {"file_path": self.p(*rel.split("/"))}}
+                self.assertEqual(self.decision("protect_files.py", payload), expected)
+
+    def test_protected_paths_ignore_files_outside_project_and_bad_config(self):
+        outside = os.path.join(os.path.dirname(self.dir), "vendor", "x.go")
+        self.write_cct(protected_paths=["vendor/"])
+        self.assertEqual(self.decision("protect_files.py", {"tool_input": {"file_path": outside}}), "allow")
+        self.write_cct(protected_paths="vendor/")
+        payload = {"tool_input": {"file_path": self.p("vendor", "x.go")}}
+        self.assertEqual(self.decision("protect_files.py", payload), "allow")
+
+    def test_protected_paths_off_with_guard(self):
+        self.write_cct(protected_paths=["vendor/"], guard_level="off")
+        payload = {"tool_input": {"file_path": self.p("vendor", "x.go")}}
+        self.assertEqual(self.decision("protect_files.py", payload), "allow")
 
     def test_lockfile_protection_can_be_disabled(self):
         self.write_cct(protect_lockfiles=False)
@@ -624,6 +654,45 @@ class SetupEvalCheckerTest(TempDirCase):
         expectations = eval_setup.load_expectations()
         fixtures = sorted(d for d in os.listdir(eval_setup.FIXTURES) if os.path.isdir(os.path.join(eval_setup.FIXTURES, d)))
         self.assertEqual(fixtures, sorted(expectations))
+
+
+class QuestionEvalCheckerTest(unittest.TestCase):
+    """The checker used by tests/eval_questions.py, run on hand-made question rounds."""
+
+    @staticmethod
+    def q(header, text="Pick one? [→ .claude/cct.json]", n=2, preview=False, **extra):
+        opts = [{"label": f"Option {i}" + (" (Recommended)" if i == 0 else ""), "description": f"Effect {i}."}
+                for i in range(n)]
+        if preview:
+            opts[0]["preview"] = "example"
+        return dict({"header": header, "question": text, "multiSelect": False, "options": opts}, **extra)
+
+    def quick_rounds(self):
+        return [{"questions": [self.q("Depth", "How thorough should setup be?")]},
+                {"questions": [self.q("Guard", preview=True), self.q("Never edit"), self.q("Done when")]}]
+
+    def test_good_quick_rounds_pass(self):
+        self.assertEqual(eval_questions.check_questions(self.quick_rounds(), "quick"), [])
+
+    def test_problems_are_listed(self):
+        rounds = self.quick_rounds()
+        rounds[1]["questions"] += [self.q("Commits"), self.q("Way too long header")]
+        rounds[1]["questions"][1]["options"][1]["description"] = ""
+        rounds[1]["questions"][0]["question"] = "Guard level? No saved preference found. [→ x]"
+        problems = "\n".join(eval_questions.check_questions(rounds, "quick"))
+        for expected in ["5 questions", "no description", "filler", "longer than 12", "Thorough-only", "missing preview"]:
+            self.assertIn(expected, problems)
+
+    def test_thorough_needs_its_questions(self):
+        problems = "\n".join(eval_questions.check_questions(self.quick_rounds(), "thorough"))
+        for header in sorted(eval_questions.THOROUGH_REQUIRED):
+            self.assertIn(f"missing question: {header}", problems)
+
+    def test_extracts_json_from_answer(self):
+        rounds = eval_questions.extract_rounds('Here you go:\n```json\n[{"questions": []}]\n```')
+        self.assertEqual(rounds, [{"questions": []}])
+        self.assertIsNone(eval_questions.extract_rounds("no json here"))
+        self.assertEqual(eval_questions.check_questions(None, "quick"), ["no question rounds found in the output"])
 
 
 class FormatTest(unittest.TestCase):

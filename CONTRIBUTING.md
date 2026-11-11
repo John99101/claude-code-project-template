@@ -26,6 +26,7 @@ claude plugin validate .                  # check the plugin and marketplace man
 claude --plugin-dir .                     # try the plugin in a session without installing it
 python3 scripts/check_mcp_catalog.py      # check every MCP catalog entry still exists
 python3 tests/eval_setup.py python-app    # run /setup for real on a sample project (uses your Claude login)
+python3 tests/eval_questions.py python-app  # check the questions /setup would ask (read-only dry run)
 shellcheck install.sh                     # lint the macOS/Linux launcher
 ```
 

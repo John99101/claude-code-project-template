@@ -116,7 +116,7 @@ The repository uses Claude Code's standard plugin layout, so nothing in it lives
 | [`hooks/`](hooks) → `.claude/hooks/` | **Enforced behaviour:** setup reminder, shell-command guard, secret-file protection, format and lint on every edit, status line. |
 | [`templates/settings.project.json`](templates/settings.project.json) → `.claude/settings.json` | **Permissions, tool access, model, hooks and status line** (hooks and status line are added by the installer). Personal overrides go in `settings.local.json`. |
 | [`templates/mcp.json`](templates/mcp.json) → `.mcp.json` | **External tools** (GitHub, Jira, Slack, databases…), shared via git. Credentials stay in `${ENV_VARS}`. |
-| [`templates/cct.json`](templates/cct.json) → `.claude/cct.json` | **Kit switches:** guard level, format and lint on edit, lockfile protection, setup reminder. |
+| [`templates/cct.json`](templates/cct.json) → `.claude/cct.json` | **Kit switches:** guard level, format and lint on edit, lockfile protection, never-edit paths, setup reminder. |
 
 <details>
 <summary><b>Full file tree</b></summary>
@@ -168,7 +168,7 @@ Set `guard_level` to `strict` to also confirm pushes, new dependencies and any d
 | Check | When |
 |---|---|
 | [Test suite](tests/test_kit.py): hooks (Bash and PowerShell), installer, update, uninstall, plugin, file formats | Every push, on Linux, macOS and Windows |
-| [Setup eval](tests/eval_setup.py): runs `/setup` for real on four sample projects | Any time on your machine with your Claude subscription (`python3 tests/eval_setup.py`); weekly on GitHub with a `claude setup-token` secret ([how](docs/GUIDE.md#running-the-setup-eval)) |
+| [Setup eval](tests/eval_setup.py): runs `/setup` for real on four sample projects, and [question eval](tests/eval_questions.py): checks the questions it would ask | Any time on your machine with your Claude subscription (`python3 tests/eval_setup.py`); weekly on GitHub with a `claude setup-token` secret ([how](docs/GUIDE.md#running-the-setup-eval)) |
 | [MCP catalog check](scripts/check_mcp_catalog.py): every server URL and package still exists | Weekly; opens an issue if something breaks |
 
 ## Documentation

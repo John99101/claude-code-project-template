@@ -11,6 +11,7 @@
 - Frameworks: {{FRAMEWORKS}}
 - Package manager: {{PACKAGE_MANAGER}}
 - Data and services: {{DATABASES_AND_SERVICES}}
+- Supported versions: {{SUPPORTED_VERSIONS: runtime and platform versions the code must keep working on, e.g. "Python 3.11+", or "not pinned"}}
 
 ## Commands
 
@@ -41,9 +42,13 @@ Topic rules in `.claude/rules/` load automatically; some load only when you work
 
 {{PROJECT_CONVENTIONS: anything important that isn't obvious from the code}}
 
+## Before you say a task is done
+
+{{DONE_CHECKLIST: one bullet per command that must pass, e.g. the test suite passes, the linter is clean}}
+
 ## Working agreements
 
-{{WORKING_AGREEMENTS: from the user's answers, e.g. autonomy level, what to ask before doing}}
+{{WORKING_AGREEMENTS: from the user's answers, e.g. autonomy level, what to ask before doing, deploy access, docs and changelog duties}}
 
 ## Tools for Claude
 

@@ -8,6 +8,7 @@ DEFAULTS = {
     "format_on_edit": True,
     "lint_on_edit": True,
     "protect_lockfiles": True,
+    "protected_paths": [],          # globs relative to the project, e.g. "vendor/", "src/gen/**"
     "setup_reminder": True,
 }
 

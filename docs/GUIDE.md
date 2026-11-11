@@ -158,7 +158,7 @@ flowchart TD
 
 **Detection** reads: package manifests and lockfiles (language, framework, package manager); test, lint, format and type-check configs; `Makefile`, `justfile` and `package.json` scripts (real commands); CI workflows (what must pass); Docker and ORM files (databases → MCP suggestions); workspace files (monorepos); the folder layout (architecture); git history (commit style, branch naming); and any existing `CLAUDE.md`, `AGENTS.md`, `.cursorrules` or Copilot instructions, which are merged, not discarded.
 
-**Questions** come from a fixed [question bank](../skills/setup/questions.md), so they're consistent. Each round has at most four multiple-choice questions, with the recommended answer first and the detected facts quoted ("Found Jest and Vitest configs. Which is current?"). Anything detected or saved is *not* asked again; it's listed in the plan for you to confirm.
+**Questions** come from a fixed [question bank](../skills/setup/questions.md), so they're consistent. Setup first asks how thorough to be: **Quick** (about 10 questions: replies, autonomy, tests, guard level, never-edit paths, the done checklist, rules) or **Thorough** (about 25, adding models, formatting, commit and branch style, deploy access, docs duties and supported versions). Each round has at most four multiple-choice questions. Every question opens with what setup found and where ("Found Jest and Vitest configs. Which is current?"), names the file the answer goes to, and every option says what it does and what it costs; guard level, commit style and agent models show previews. Anything detected or saved is *not* asked again, and anything skipped uses the recommended answer; both are listed in the plan for you to confirm.
 
 **Nothing is written before you approve the plan**, and nothing is committed. Your existing content is merged, never silently dropped.
 
@@ -227,6 +227,7 @@ The guard reads commands the way a shell does. It understands quotes (so `git co
 | `format_on_edit` | `true` | Format files after Claude edits them |
 | `lint_on_edit` | `true` | Lint files after Claude edits them and send problems back to Claude |
 | `protect_lockfiles` | `true` | Ask before hand-editing lockfiles |
+| `protected_paths` | `[]` | Globs Claude must never edit, e.g. `["vendor/", "src/gen/**"]`. `dir/` covers a whole folder. |
 | `setup_reminder` | `true` | Session-start reminder when setup is pending |
 
 To turn off the status line, remove `statusLine` from `settings.json` (or answer "No" during setup).
@@ -339,6 +340,7 @@ It deletes every kit file you haven't changed, **keeps and lists the ones you ha
 | [`tests/test_kit.py`](../tests/test_kit.py) | Every guard rule for Bash and PowerShell (including the loopholes above), file protection, lint feedback, status line, de-duplication across project/device/plugin installs, settings merge and migration, install, update, uninstall, adopt, plugin files, file formats | Every push and pull request, on **Linux, macOS and Windows** |
 | `claude plugin validate .` | The plugin and marketplace manifests | Every push |
 | [`tests/eval_setup.py`](../tests/eval_setup.py) | Runs `/setup --defaults` **for real** on four sample projects in [`tests/fixtures/`](../tests/fixtures) (Python, TypeScript, Go, pnpm monorepo) and checks: marker removed, no placeholders left, valid JSON, the right commands in `CLAUDE.md`, the right rule packs, package briefs in the monorepo, guard still working | On your machine whenever you like, and weekly or on demand on GitHub (see below) |
+| [`tests/eval_questions.py`](../tests/eval_questions.py) | Runs a read-only dry run of `/setup` on the same sample projects and checks the questions it would ask: at most 4 per round, 2–4 options each with a description, recommended option first, short headers, no filler, previews, and the right questions for Quick or Thorough | Weekly on GitHub, right after the setup eval, and any time locally (`python3 tests/eval_questions.py [--depth quick]`) |
 | [`scripts/check_mcp_catalog.py`](../scripts/check_mcp_catalog.py) | Every MCP catalog URL still answers, and every npm/PyPI package still exists and isn't deprecated | Weekly; opens a GitHub issue if something broke |
 | Release workflow | Tag matches `VERSION` and `plugin.json`, tests pass, release notes come from `CHANGELOG.md` | On every `v*` tag |
 

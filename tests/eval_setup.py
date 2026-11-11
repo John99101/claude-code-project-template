@@ -15,6 +15,7 @@ active and your personal settings and plugins not loaded.
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -60,8 +61,11 @@ def check_result(project, expect):
     if os.path.isdir(rules_dir):
         to_scan += [os.path.join(rules_dir, f) for f in os.listdir(rules_dir) if f.endswith(".md")]
     for path in to_scan:
-        if "{{" in read(path):
-            problems.append(f"unfilled {{{{placeholders}}}} in {os.path.relpath(path, project)}")
+        text = read(path)
+        if "{{" in text:
+            names = sorted({m.split(":")[0].strip() for m in re.findall(r"\{\{(.*?)\}\}", text, re.S)})
+            problems.append(f"unfilled {{{{placeholders}}}} in {os.path.relpath(path, project)}: "
+                            + (", ".join(n[:40] for n in names) or "unclosed {{"))
 
     for rel in [".claude/settings.json", ".claude/cct.json", ".mcp.json"]:
         path = os.path.join(project, rel)

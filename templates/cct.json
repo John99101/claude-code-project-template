@@ -3,5 +3,6 @@
   "format_on_edit": true,
   "lint_on_edit": true,
   "protect_lockfiles": true,
+  "protected_paths": [],
   "setup_reminder": true
 }

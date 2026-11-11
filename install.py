@@ -31,7 +31,8 @@ USER_OWNED = {"CLAUDE.md", ".mcp.json", ".claude/cct.json", "cct.json"}
 GITIGNORE_LINES = [".claude/settings.local.json", "CLAUDE.local.md", ".env", ".env.*", "!.env.example"]
 # The kit's own development files, removed by --adopt from a "Use this template" copy.
 DEV_FILES = ["install.py", "install.sh", "install.ps1", "scripts", "templates", "rule-packs", "skills", "agents",
-             "rules", "hooks", ".claude-plugin", "tests/test_kit.py", "tests/eval_setup.py", "tests/fixtures",
+             "rules", "hooks", ".claude-plugin", "tests/test_kit.py", "tests/eval_setup.py",
+             "tests/eval_questions.py", "tests/fixtures",
              ".github/workflows/ci.yml", ".github/workflows/eval-setup.yml", ".github/workflows/mcp-catalog.yml",
              ".github/workflows/release.yml", ".github/ISSUE_TEMPLATE", ".github/pull_request_template.md",
              "docs/GUIDE.md", "CHANGELOG.md", "CONTRIBUTING.md", "VERSION", "INSTALL.md", "LICENSE", "README.md"]
