@@ -64,7 +64,7 @@ Recommend **Match existing history** if history has a clear pattern, otherwise C
 - **Match existing history**: I copy the pattern in `git log`: prefix, tense, length.
 
 ### `model` · header `Model`
-Q: "Default model for sessions? Currently {value of "model" in settings.json | Claude Code's default}. [→ settings.json "model"]"
+Q: "Default model for sessions? {Only if one is set: settings.json sets "opus".} [→ settings.json "model"]"
 - **Claude Code's default (Recommended)**: no setting written, so you follow Anthropic's default as it changes. Switch per session with `/model`.
 - **Opus**: strongest reasoning, for hard debugging and architecture. Slower and uses your limits fastest.
 - **Sonnet**: fast and capable for everyday coding. Uses your limits much more slowly than Opus.
@@ -129,7 +129,7 @@ Always offer your best guess as option 1, labelled with where it came from.
 | commands · `Commands` | "Which command runs the {tests / dev server / build}? [→ CLAUDE.md, settings.json allow]" | Several candidates or none. One option per candidate, each description naming its source: "`make test` (Makefile:12) · runs pytest with coverage". Recommend the one CI runs. |
 | test framework · `Test tool` | "Found {jest.config.js and vitest.config.ts}. Which is current? [→ .claude/rules/testing.md]" | Several configs. Descriptions give each one's test-file count and last-modified date. |
 | conventions · `Conventions` | "Any conventions not visible in the code? I noticed: {e.g. services in src/services/, no default exports}. [→ CLAUDE.md]" | Always once. Option 1: "None beyond what you found". Option 2: "Yes, let me add some". List what you inferred, so the user only adds what's missing. |
-| rules · `Rules` (multi) | "Which rule files should this project keep? [→ .claude/rules/]" | Each option's description gives what the rule covers and why it fits ("api-design: found 14 FastAPI routes in app/api/"). Pre-select those that apply; for the rest, say why not ("no HTTP API found"). |
+| rules · `Rules` (multi) | "code-style, git-workflow and security are always kept. Which of these should this project also keep? [→ .claude/rules/]" | Options are only the optional rules: testing, api-design and the language packs that fit. AskUserQuestion allows 4 options at most, so with more than two language packs, ask about the packs in a second question. Each option's description gives what the rule covers and why it fits ("api-design: found 14 FastAPI routes in app/api/"). Pre-select those that apply; for the rest, say why not ("no HTTP API found"). |
 | packages · `Packages` (multi) | "{n} workspace packages found. Which get their own CLAUDE.md? [→ <pkg>/CLAUDE.md]" | Monorepo. Descriptions give path, language and kind (app, service, library). Pre-select apps and services. |
 | mcp · `MCP` (multi) | "Connect any tools via MCP? [→ .mcp.json]" | Offer from `mcp-catalog.json` only what has evidence: "GitHub: remote is github.com/…", "Postgres: DATABASE_URL in .env.example". Each description names the env var the user must set. |
 | branch policy · `Branches` | "History shows {n of 30 commits on main, branches like feat/*}. How should I work? [→ git-workflow.md]" | No clear pattern. Options: feature branches + PR · commit to default branch · ask each time. |
