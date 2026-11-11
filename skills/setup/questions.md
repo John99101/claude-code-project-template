@@ -108,7 +108,8 @@ Q: "Lint each file after I edit it and fix the problems right away? {Found: ruff
 - **No**: lint only when you or CI runs it. Choose this if the linter is slow or the code has many existing warnings.
 
 ### `protect_lockfiles` · header `Lockfiles`
-Q: "Ask before I edit lockfiles by hand? {Found: uv.lock}. [→ .claude/cct.json]"
+Q: "Ask before I edit lockfiles by hand? {Found: uv.lock | No lockfile yet; uv creates uv.lock on the first `uv sync`.} [→ .claude/cct.json]"
+Always ask this whenever the Safety group is asked, even if no lockfile exists: the setting outlives the repo's current state, and lockfiles usually appear later. Never skip it because nothing was found.
 - **Yes (Recommended)**: I'm asked to use the package manager instead. Hand-edited lockfiles drift from the manifest.
 - **No**: allow direct edits, e.g. for merge-conflict fixes.
 
