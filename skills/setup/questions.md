@@ -6,7 +6,8 @@ Ask only what you couldn't detect and isn't in `~/.claude/cct-preferences.md`. D
 
 Every AskUserQuestion call should let the user decide without opening a file.
 
-- **Lead with evidence.** Start the question with what you found and where: file, value, count. "pyproject.toml configures ruff (line-length 100) and black. Which formatter should run after each edit?" If you found nothing, say so: "No formatter config found."
+- **Lead with evidence.** Start the question with what you found and where: file, value, count. "pyproject.toml configures ruff (line-length 100) and black. Which formatter should run after each edit?" If you found nothing relevant to the choice, say so: "No formatter config found."
+- **Only facts that inform the choice.** No filler about the setup process itself: never "No saved preference found", "Currently not set", "Asking because…" or a restatement of the question. Questions without a detectable fact (verbosity, experience, autonomy) are just the question and its target.
 - **Say where the answer goes.** End the question with the target in brackets: `[→ .claude/cct.json]`, `[→ CLAUDE.md]`, `[saved for all projects]`.
 - **Fill every option's `description`** with its concrete effect and its trade-off. Use the descriptions below, and swap in detected names (the real test command, the real linter).
 - **Recommended option first**, with "(Recommended)" at the end of its label. If detection points to a different option than the default, recommend that one and say why.
