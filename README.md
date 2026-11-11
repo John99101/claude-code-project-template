@@ -11,6 +11,7 @@ asking about anything it isn't sure of.
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Claude Code](https://img.shields.io/badge/built%20for-Claude%20Code-D97757)](https://docs.claude.com/en/docs/claude-code)
 [![Python 3](https://img.shields.io/badge/hooks-python%203-3776AB)](.claude/hooks/README.md)
+[![M8ven Score](https://m8ven.ai/badge/mcp/john99101-claude-code-project-template-1leowc?v=0c6c47e43b32dc4a84be76945ec8ab42)](https://m8ven.ai/mcp/john99101-claude-code-project-template-1leowc?s=readme)
 
 [Quick start](#quick-start) · [What setup looks like](#what-setup-looks-like) · [What's inside](#whats-inside) · [Full guide](docs/GUIDE.md)
 
