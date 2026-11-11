@@ -4,6 +4,8 @@ All notable changes to this kit. The format follows [Keep a Changelog](https://k
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-11
+
 ### Added
 - **Quick or Thorough setup.** `/setup` first asks how thorough to be. Quick asks about 10 questions; Thorough asks about 25, adding plan-first, model, formatting, commit and branch style, deploy access, docs duties and supported versions.
 - **Never-edit paths:** new `protected_paths` setting in `cct.json` (e.g. `["vendor/", "src/gen/**"]`). The file guard blocks edits there, and setup offers the generated or vendored code it finds.
@@ -85,7 +87,8 @@ All notable changes to this kit. The format follows [Keep a Changelog](https://k
 - MCP catalog: GitHub, Atlassian (Jira/Confluence), Slack, Postgres, SQLite, Playwright, Context7.
 - Test suite and CI on Linux and macOS.
 
-[Unreleased]: https://github.com/John99101/claude-code-project-template/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/John99101/claude-code-project-template/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/John99101/claude-code-project-template/releases/tag/v2.1.0
 [2.0.0]: https://github.com/John99101/claude-code-project-template/releases/tag/v2.0.0
 [1.2.0]: https://github.com/John99101/claude-code-project-template/releases/tag/v1.2.0
 [1.1.0]: https://github.com/John99101/claude-code-project-template/releases/tag/v1.1.0
