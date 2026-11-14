@@ -4,6 +4,12 @@ All notable changes to this kit. The format follows [Keep a Changelog](https://k
 
 ## [Unreleased]
 
+### Added
+- **Go and Rust lint feedback.** After an edit, the format hook runs `golangci-lint` (or `go vet` when it isn't installed) on the edited file's package, and `cargo clippy` on its crate. Only problems in the edited file go back to Claude, so existing warnings elsewhere don't block every edit. Clippy warnings count, not just errors.
+
+### Fixed
+- `rustfmt` used the 2021 edition for every crate. It now reads `edition` from the nearest `Cargo.toml`.
+
 ## [2.1.0] - 2026-11-11
 
 ### Added

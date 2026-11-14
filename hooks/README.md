@@ -7,7 +7,7 @@ Event-driven scripts registered in `.claude/settings.json`. They need `python3` 
 | `session_start.py` | `SessionStart` | Tells Claude when setup is unfinished (`.claude/cct-pending`) so it offers `/setup`. |
 | `guard_bash.py` | `PreToolUse` · `Bash\|PowerShell` | Blocks destructive commands (`rm -rf /`, `find / -delete`, `mkfs`, force-push or deleting `main`, `curl … \| sh`), including when they're hidden in `sh -c`, `eval`, `$(…)` or backticks. Asks before risky ones (`rm -r`, `git reset --hard`, `sudo`, `DROP TABLE`, publishing). |
 | `protect_files.py` | `PreToolUse` · `Edit\|Write` | Blocks writes to `.env`, keys, `secrets/`, `.git/` and your `protected_paths`. Asks before editing lockfiles or CI workflows. |
-| `format_file.py` | `PostToolUse` · `Edit\|Write` | Formats the edited file with the project's formatter (prettier, biome, ruff, black, gofmt, rustfmt, shfmt), then lints it (eslint, biome, ruff, shellcheck) and **sends problems back to Claude** to fix right away. Never downloads anything. |
+| `format_file.py` | `PostToolUse` · `Edit\|Write` | Formats the edited file with the project's formatter (prettier, biome, ruff, black, gofmt, rustfmt, shfmt), then lints it (eslint, biome, ruff, shellcheck, golangci-lint or go vet, cargo clippy) and **sends problems back to Claude** to fix right away. Go and Rust linters check the whole package or crate, but only problems in the edited file are reported. Never downloads anything. |
 | `statusline.py` | `statusLine` | Shows `model · folder (branch) · guard level · setup state`. |
 | `cct_config.py` | — | Shared helper: loads `cct.json`, and makes device-wide hooks step aside when the project has its own copy. |
 

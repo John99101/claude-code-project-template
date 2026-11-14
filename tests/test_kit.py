@@ -274,6 +274,87 @@ class FormatFileTest(TempDirCase):
         r = self.run_hook(os.path.join(HOOKS, "format_file.py"), {"tool_input": {"file_path": path}})
         self.assertEqual((r.returncode, r.stderr), (0, ""))
 
+    def fake_tool(self, name, code):
+        """A stand-in command on a PATH that holds nothing else, so real Go or Rust tools don't interfere."""
+        script = self.touch(f"fakebin_src/{name}.py", "import sys\n" + code)
+        if WINDOWS:
+            self.touch(f"fakebin/{name}.cmd", f'@"{sys.executable}" "{script}" %*\r\n')
+        else:
+            path = self.touch(f"fakebin/{name}", f'#!/bin/sh\nexec "{sys.executable}" "{script}" "$@"\n')
+            os.chmod(path, os.stat(path).st_mode | stat.S_IEXEC)
+        self.env["PATH"] = self.p("fakebin")
+
+    def lint(self, rel):
+        return self.run_hook(os.path.join(HOOKS, "format_file.py"), {"tool_input": {"file_path": self.p(*rel.split("/"))}})
+
+    def go_module(self):
+        self.touch("svc/go.mod", "module example.com/svc\n")
+        self.touch("svc/pkg/a.go", "package pkg\n")
+        self.touch("svc/pkg/b.go", "package pkg\n")
+        self.touch("svc/main.go", "package main\n")
+
+    def test_go_reports_only_the_edited_file(self):
+        self.go_module()
+        # golangci-lint checks the whole package and prints paths relative to the module.
+        self.fake_tool("golangci-lint", "assert sys.argv[1:] == ['run', './pkg'], sys.argv\n"
+                                        "print('pkg/a.go:6:14: printf: wrong type (govet)')\n"
+                                        "print('pkg/b.go:6:11: Error return value is not checked (errcheck)')\n"
+                                        "print('2 issues:'); sys.exit(1)\n")
+        r = self.lint("svc/pkg/a.go")
+        self.assertEqual(r.returncode, 2, r.stderr)
+        self.assertIn("golangci-lint found problems", r.stderr)
+        self.assertIn("govet", r.stderr)
+        self.assertNotIn("errcheck", r.stderr)
+        self.assertNotIn("2 issues", r.stderr)
+
+    def test_go_problems_elsewhere_dont_block(self):
+        self.go_module()
+        self.fake_tool("golangci-lint", "print('pkg/b.go:6:11: not checked (errcheck)'); sys.exit(1)\n")
+        r = self.lint("svc/main.go")
+        self.assertEqual((r.returncode, r.stderr), (0, ""))
+
+    def test_go_vet_is_the_fallback(self):
+        self.go_module()
+        self.fake_tool("go", "assert sys.argv[1:] == ['vet', '.'], sys.argv\n"
+                             "sys.stderr.write('# example.com/svc\\nvet: main.go:3:23: undefined: x\\n'); sys.exit(1)\n")
+        r = self.lint("svc/main.go")
+        self.assertEqual(r.returncode, 2, r.stderr)
+        self.assertIn("go vet found problems", r.stderr)
+        self.assertIn("undefined: x", r.stderr)
+
+    def test_go_without_module_is_not_linted(self):
+        self.touch("loose.go", "package main\n")
+        self.fake_tool("go", "print('loose.go:1:1: should not run'); sys.exit(1)\n")
+        r = self.lint("loose.go")
+        self.assertEqual((r.returncode, r.stderr), (0, ""))
+
+    def rust_workspace(self):
+        self.touch("Cargo.toml", '[workspace]\nmembers = ["crates/app"]\n')
+        self.touch("crates/app/Cargo.toml", '[package]\nname = "app"\nedition = "2024"\n')
+        self.touch("crates/app/src/main.rs", "fn main() {}\n")
+        self.touch("crates/app/src/util.rs", "pub fn f() {}\n")
+
+    def test_clippy_warnings_are_sent_back(self):
+        self.rust_workspace()
+        # clippy exits 0 for warnings and prints paths relative to the workspace root, not the crate.
+        self.fake_tool("cargo", "assert sys.argv[1] == 'clippy', sys.argv\n"
+                                "sys.stderr.write('crates/app/src/main.rs:4:8: warning: length comparison to zero\\n'\n"
+                                "                 'crates/app/src/util.rs:2:9: warning: unused variable\\n'\n"
+                                "                 'warning: `app` (bin \"app\") generated 2 warnings\\n')\n")
+        r = self.lint("crates/app/src/main.rs")
+        self.assertEqual(r.returncode, 2, r.stderr)
+        self.assertIn("cargo clippy found problems", r.stderr)
+        self.assertIn("length comparison", r.stderr)
+        self.assertNotIn("unused variable", r.stderr)
+        self.assertNotIn("generated", r.stderr)
+
+    def test_rustfmt_uses_the_crate_edition(self):
+        self.rust_workspace()
+        self.fake_tool("rustfmt", f"open({self.p('args.json')!r}, 'w').write(__import__('json').dumps(sys.argv[1:]))\n")
+        self.write_cct(lint_on_edit=False)
+        self.assertEqual(self.lint("crates/app/src/main.rs").returncode, 0)
+        self.assertEqual(read_json(self.p("args.json"))[:2], ["--edition", "2024"])
+
 
 class SessionStartTest(TempDirCase):
     def test_silent_without_marker(self):
