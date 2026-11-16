@@ -5,6 +5,7 @@ All notable changes to this kit. The format follows [Keep a Changelog](https://k
 ## [Unreleased]
 
 ### Added
+- **Done gate.** A new `Stop` hook runs the commands in `done_gate.commands` (in `.claude/cct.json`) when Claude finishes a turn that changed files, and sends a failure back so Claude keeps working instead of saying it's done. In a git repository, edits made with shell commands count too. Claude may still finish when it judges a failure out of scope and changes nothing more, or after `done_gate.attempts` tries (default 3). Commands that exceed `done_gate.timeout` (default 120 s) are skipped, with a message. Off by default; `/setup` offers it with the done-checklist commands.
 - **Go and Rust lint feedback.** After an edit, the format hook runs `golangci-lint` (or `go vet` when it isn't installed) on the edited file's package, and `cargo clippy` on its crate. Only problems in the edited file go back to Claude, so existing warnings elsewhere don't block every edit. Clippy warnings count, not just errors.
 
 ### Fixed
