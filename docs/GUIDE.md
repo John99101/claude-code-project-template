@@ -371,7 +371,7 @@ GitHub pauses scheduled workflows in a public repository after 60 days without a
 | `/setup` or other skills don't appear | Restart Claude Code. Check the files are in `.claude/skills/` (project) or `~/.claude/skills/` (device). |
 | A hook error appears on every tool call | Run the hook by hand: `echo '{"tool_input":{"command":"ls"}}' \| python3 .claude/hooks/guard_bash.py`. The usual cause is `python3` missing. |
 | The guard blocks something you need | Run the command yourself in a terminal, or lower `guard_level` in `.claude/cct.json`. |
-| Files aren't formatted or linted | The hook only uses tools already installed in the project or on `PATH`, and ESLint only runs when the project has an ESLint config. Install the tool, or turn the step off in `cct.json`. |
+| Files aren't formatted or linted | The hook only uses tools already installed in the project or on `PATH`, ESLint only runs when the project has an ESLint config, and Go and Rust files are only linted inside a `go.mod` or `Cargo.toml` project. A first `cargo clippy` run that has to build dependencies can exceed the hook's time limit and is skipped silently; later runs are fast. Install the tool, or turn the step off in `cct.json`. |
 | Claude keeps getting lint messages it can't fix | The linter's own config may disagree with the project. Fix the config, or set `lint_on_edit: false`. |
 | An MCP server fails to connect | Check the env vars are set in the shell that starts Claude Code, run `/mcp` (some servers need a browser login there), and check the vendor docs. |
 | Setup is very slow with many confirmations | Another plugin may be adding a step per file (see [§10](#10-using-the-kit-with-other-plugins-eg-ecc)). |
