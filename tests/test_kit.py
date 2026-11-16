@@ -355,6 +355,20 @@ class FormatFileTest(TempDirCase):
         self.assertEqual(self.lint("crates/app/src/main.rs").returncode, 0)
         self.assertEqual(read_json(self.p("args.json"))[:2], ["--edition", "2024"])
 
+    def test_rustfmt_uses_the_workspace_edition(self):
+        for inherit in ("edition.workspace = true", "edition = { workspace = true }"):
+            with self.subTest(inherit):
+                self.touch("Cargo.toml", '[workspace]\nmembers = ["crates/app"]\n\n'
+                                         '[workspace.package]\nedition = "2024"\n')
+                self.touch("crates/app/Cargo.toml", f'[package]\nname = "app"\n{inherit}\n\n'
+                                                    '[dependencies]\nserde = { version = "1", edition = "2018" }\n')
+                self.touch("crates/app/src/main.rs", "fn main() {}\n")
+                self.fake_tool("rustfmt",
+                               f"open({self.p('args.json')!r}, 'w').write(__import__('json').dumps(sys.argv[1:]))\n")
+                self.write_cct(lint_on_edit=False)
+                self.assertEqual(self.lint("crates/app/src/main.rs").returncode, 0)
+                self.assertEqual(read_json(self.p("args.json"))[:2], ["--edition", "2024"])
+
 
 class SessionStartTest(TempDirCase):
     def test_silent_without_marker(self):
