@@ -4,5 +4,6 @@
   "lint_on_edit": true,
   "protect_lockfiles": true,
   "protected_paths": [],
-  "setup_reminder": true
+  "setup_reminder": true,
+  "done_gate": { "commands": [], "timeout": 120, "attempts": 3 }
 }

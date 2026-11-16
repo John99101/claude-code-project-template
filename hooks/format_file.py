@@ -13,6 +13,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cct_config import defer_to_project, load_config, project_dir, read_input  # noqa: E402
+from done_gate import mark_edited  # noqa: E402
 
 PRETTIER_EXT = {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".json", ".css", ".scss",
                 ".less", ".html", ".vue", ".svelte", ".yaml", ".yml", ".graphql"}
@@ -239,9 +240,11 @@ def main():
     if defer_to_project(__file__):
         return
     cfg = load_config()
-    path = (read_input().get("tool_input") or {}).get("file_path") or ""
+    payload = read_input()
+    path = (payload.get("tool_input") or {}).get("file_path") or ""
     if not path or not os.path.isfile(path):
         return
+    mark_edited(payload, cfg)
 
     if cfg.get("format_on_edit", True):
         cmd = formatter_for(path)
