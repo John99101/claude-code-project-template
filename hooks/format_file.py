@@ -91,17 +91,49 @@ def formatter_for(path):
     return None
 
 
+EDITION = re.compile(r'^\s*edition\s*=\s*"(\d{4})"')
+INHERITED_EDITION = re.compile(r"^\s*edition\s*(\.\s*workspace\s*=\s*true|=\s*\{[^}]*\bworkspace\s*=\s*true)")
+
+
+def manifest_sections(manifest):
+    """{section: [lines]} of a Cargo.toml; enough TOML for the edition keys (tomllib needs Python 3.11)."""
+    sections, current = {}, ""
+    try:
+        with open(manifest, encoding="utf-8") as f:
+            for line in f:
+                header = re.match(r"^\s*\[([^\[\]]+)\]", line)
+                if header:
+                    current = header.group(1).strip()
+                else:
+                    sections.setdefault(current, []).append(line)
+    except (OSError, UnicodeDecodeError):
+        pass
+    return sections
+
+
 def rust_edition(here):
-    """The crate's edition from the nearest Cargo.toml, so rustfmt formats like `cargo fmt` would."""
+    """The crate's edition from the nearest Cargo.toml, so rustfmt formats like `cargo fmt` would.
+    A crate with `edition.workspace = true` gets the edition from `[workspace.package]` further up."""
     manifest = find_up(here, "Cargo.toml")
-    if manifest:
-        try:
-            with open(manifest, encoding="utf-8") as f:
-                m = re.search(r'^\s*edition\s*=\s*"(\d{4})"', f.read(), re.M)
+    if not manifest:
+        return "2021"
+    package = manifest_sections(manifest).get("package", [])
+    for line in package:
+        m = EDITION.match(line)
+        if m:
+            return m.group(1)
+    if not any(INHERITED_EDITION.match(line) for line in package):
+        return "2021"
+    root = os.path.abspath(project_dir())
+    while manifest:
+        for line in manifest_sections(manifest).get("workspace.package", []):
+            m = EDITION.match(line)
             if m:
                 return m.group(1)
-        except (OSError, UnicodeDecodeError):
-            pass
+        d = os.path.dirname(manifest)
+        if same_file(d, root) or os.path.dirname(d) == d:
+            break
+        manifest = find_up(os.path.dirname(d), "Cargo.toml")
     return "2021"
 
 
