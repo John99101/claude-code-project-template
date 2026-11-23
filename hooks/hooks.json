@@ -28,6 +28,13 @@
           { "type": "command", "command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/format_file.py"], "timeout": 40 }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/done_gate.py"], "timeout": 600 }
+        ]
+      }
     ]
   }
 }

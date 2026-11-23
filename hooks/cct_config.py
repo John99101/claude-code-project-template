@@ -10,6 +10,7 @@ DEFAULTS = {
     "protect_lockfiles": True,
     "protected_paths": [],          # globs relative to the project, e.g. "vendor/", "src/gen/**"
     "setup_reminder": True,
+    "done_gate": {"commands": [], "timeout": 120, "attempts": 3},  # checks run before Claude finishes
 }
 
 

@@ -113,10 +113,10 @@ The repository uses Claude Code's standard plugin layout, so nothing in it lives
 | [`rule-packs/`](rule-packs) → `.claude/cct/` | **Ready-made language rules** for Python, TypeScript/JavaScript, Go, Rust and Java/Kotlin. Setup installs the ones your project uses. |
 | [`skills/`](skills) → `.claude/skills/` | **Slash commands and on-demand know-how.** You run `/setup`, `/check`, `/review-changes`, `/commit` and `/template-update`. Claude picks up `remember-preference`, `write-tests`, `debug-issue` and `release-notes` when relevant. |
 | [`agents/`](agents) → `.claude/agents/` | **Specialist subagents** with their own context, tools and model: planner, reviewer, security auditor, test writer. |
-| [`hooks/`](hooks) → `.claude/hooks/` | **Enforced behaviour:** setup reminder, shell-command guard, secret-file protection, format and lint on every edit, status line. |
+| [`hooks/`](hooks) → `.claude/hooks/` | **Enforced behaviour:** setup reminder, shell-command guard, secret-file protection, format and lint on every edit, an optional done gate that runs your checks before Claude finishes, status line. |
 | [`templates/settings.project.json`](templates/settings.project.json) → `.claude/settings.json` | **Permissions, tool access, model, hooks and status line** (hooks and status line are added by the installer). Personal overrides go in `settings.local.json`. |
 | [`templates/mcp.json`](templates/mcp.json) → `.mcp.json` | **External tools** (GitHub, Jira, Slack, databases…), shared via git. Credentials stay in `${ENV_VARS}`. |
-| [`templates/cct.json`](templates/cct.json) → `.claude/cct.json` | **Kit switches:** guard level, format and lint on edit, lockfile protection, never-edit paths, setup reminder. |
+| [`templates/cct.json`](templates/cct.json) → `.claude/cct.json` | **Kit switches:** guard level, format and lint on edit, lockfile protection, never-edit paths, done gate, setup reminder. |
 
 <details>
 <summary><b>Full file tree</b></summary>

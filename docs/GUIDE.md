@@ -129,7 +129,23 @@ Agents run in a **separate context window**, so a long exploration or review doe
 | `guard_bash.py` | Before every shell command | Blocks destructive commands, asks before risky ones (see [§7](#7-the-safety-model)) |
 | `protect_files.py` | Before every file edit | Blocks edits to secrets and git internals; asks before lockfiles and CI |
 | `format_file.py` | After every file edit | Formats the file with *your project's* formatter, then lints it. **Lint problems go straight back to Claude**, which fixes them before moving on instead of finding them later at `/check`. |
+| `done_gate.py` | When Claude finishes a turn | Off until `done_gate.commands` is set. If Claude changed files in the turn, runs those commands (your done checklist) and **sends a failure back to Claude**, which keeps working instead of saying it's done. See [the done gate](#the-done-gate) below. |
 | `statusline.py` | Status line | `Opus · my-app (main) · guard standard · setup done` |
+
+#### The done gate
+
+`CLAUDE.md` tells Claude what must pass before a task is done, but Claude can still forget to check. With the done gate, the hook runs the checks instead:
+
+```json
+"done_gate": { "commands": ["pnpm lint", "pnpm test"], "timeout": 120, "attempts": 3 }
+```
+
+- It runs only when Claude tries to finish a turn **that changed files**: with Edit or Write, or, in a git repository, any change to the working tree, including edits made with shell commands. Changes that were already there when the session started don't count. A turn that only answers a question finishes at once.
+- Commands run from the project root, in order, and stop at the first failure. Put the fast ones first. `CI=1` is set, so test runners don't start in watch mode.
+- A failure sends the last 40 lines of output back to Claude, which fixes the cause and tries to finish again.
+- Claude is not trapped: if it decides the failure is outside the task, it explains and finishes without changing more files, and is let through. After `attempts` blocked tries in a row, it's let through anyway. Either way you see a message that the checks still fail.
+- A command that runs longer than `timeout` seconds (in total, up to 580) doesn't count as a failure. The turn finishes and you're told it wasn't checked.
+- Files the checks themselves write (coverage reports, caches) don't count as changes.
 
 Hooks need only `python3` and the standard library. They never download anything, never break a session on bad input, and only use tools already in your project (`node_modules/.bin`, `.venv/bin`) or on your `PATH`.
 
@@ -229,6 +245,7 @@ The guard reads commands the way a shell does. It understands quotes (so `git co
 | `protect_lockfiles` | `true` | Ask before hand-editing lockfiles |
 | `protected_paths` | `[]` | Globs Claude must never edit, e.g. `["vendor/", "src/gen/**"]`. `dir/` covers a whole folder. |
 | `setup_reminder` | `true` | Session-start reminder when setup is pending |
+| `done_gate` | `{"commands": [], "timeout": 120, "attempts": 3}` | Commands that must pass before Claude finishes a turn that changed files. Empty turns it off. See [the done gate](#the-done-gate). |
 
 To turn off the status line, remove `statusLine` from `settings.json` (or answer "No" during setup).
 
@@ -337,7 +354,7 @@ It deletes every kit file you haven't changed, **keeps and lists the ones you ha
 
 | Check | What it covers | When |
 |---|---|---|
-| [`tests/test_kit.py`](../tests/test_kit.py) | Every guard rule for Bash and PowerShell (including the loopholes above), file protection, lint feedback, status line, de-duplication across project/device/plugin installs, settings merge and migration, install, update, uninstall, adopt, plugin files, file formats | Every push and pull request, on **Linux, macOS and Windows** |
+| [`tests/test_kit.py`](../tests/test_kit.py) | Every guard rule for Bash and PowerShell (including the loopholes above), file protection, lint feedback, the done gate, status line, de-duplication across project/device/plugin installs, settings merge and migration, install, update, uninstall, adopt, plugin files, file formats | Every push and pull request, on **Linux, macOS and Windows** |
 | `claude plugin validate .` | The plugin and marketplace manifests | Every push |
 | [`tests/eval_setup.py`](../tests/eval_setup.py) | Runs `/setup --defaults` **for real** on four sample projects in [`tests/fixtures/`](../tests/fixtures) (Python, TypeScript, Go, pnpm monorepo) and checks: marker removed, no placeholders left, valid JSON, the right commands in `CLAUDE.md`, the right rule packs, package briefs in the monorepo, guard still working | On your machine whenever you like, and weekly or on demand on GitHub (see below) |
 | [`tests/eval_questions.py`](../tests/eval_questions.py) | Runs a read-only dry run of `/setup` on the same sample projects and checks the questions it would ask: at most 4 per round, 2–4 options each with a description, recommended option first, short headers, no filler, previews, and the right questions for Quick or Thorough | Weekly on GitHub, right after the setup eval, and any time locally (`python3 tests/eval_questions.py [--depth quick]`) |
@@ -372,6 +389,7 @@ GitHub pauses scheduled workflows in a public repository after 60 days without a
 | A hook error appears on every tool call | Run the hook by hand: `echo '{"tool_input":{"command":"ls"}}' \| python3 .claude/hooks/guard_bash.py`. The usual cause is `python3` missing. |
 | The guard blocks something you need | Run the command yourself in a terminal, or lower `guard_level` in `.claude/cct.json`. |
 | Files aren't formatted or linted | The hook only uses tools already installed in the project or on `PATH`, ESLint only runs when the project has an ESLint config, and Go and Rust files are only linted inside a `go.mod` or `Cargo.toml` project. A first `cargo clippy` run that has to build dependencies can exceed the hook's time limit and is skipped silently; later runs are fast. Install the tool, or turn the step off in `cct.json`. |
+| Every turn ends with a long test run | The done gate runs after any turn with edits. Keep only fast checks in `done_gate.commands` (lint, unit tests) and leave slow ones to `/check` or CI. |
 | Claude keeps getting lint messages it can't fix | The linter's own config may disagree with the project. Fix the config, or set `lint_on_edit: false`. |
 | An MCP server fails to connect | Check the env vars are set in the shell that starts Claude Code, run `/mcp` (some servers need a browser login there), and check the vendor docs. |
 | Setup is very slow with many confirmations | Another plugin may be adding a step per file (see [§10](#10-using-the-kit-with-other-plugins-eg-ecc)). |

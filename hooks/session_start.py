@@ -9,7 +9,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cct_config import (defer_to_project, home_claude, is_device_copy, load_config,  # noqa: E402
-                        project_dir, setup_command)
+                        project_dir, read_input, setup_command)
+from done_gate import record_baseline  # noqa: E402
 
 SOURCE_REPO = "claude-code-project-template"
 PROJECT_SIGNS = [".git", "package.json", "pyproject.toml", "requirements.txt", "go.mod", "Cargo.toml",
@@ -53,7 +54,11 @@ def refresh_plugin_statusline():
 
 def main():
     refresh_plugin_statusline()
-    if defer_to_project(__file__) or not load_config().get("setup_reminder", True):
+    if defer_to_project(__file__):
+        return
+    cfg = load_config()
+    record_baseline(read_input(), cfg)
+    if not cfg.get("setup_reminder", True):
         return
     proj = project_dir()
     if is_template_source(proj):

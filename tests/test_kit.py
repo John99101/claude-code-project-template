@@ -370,6 +370,143 @@ class FormatFileTest(TempDirCase):
                 self.assertEqual(read_json(self.p("args.json"))[:2], ["--edition", "2024"])
 
 
+class DoneGateTest(TempDirCase):
+    SESSION = {"session_id": "s1"}
+
+    def gate(self, *commands, **cfg):
+        self.write_cct(format_on_edit=False, lint_on_edit=False,
+                       done_gate=dict({"commands": [self.cmd(c) for c in commands]}, **cfg))
+
+    def cmd(self, code):
+        """A shell command that runs this Python code, written to a file so quoting works in sh and cmd.exe."""
+        script = self.touch(f"cmds/c{abs(hash(code))}.py", "import sys, time\n" + code + "\n")
+        return f'"{sys.executable}" "{script}"'
+
+    def edit(self, rel="src/app.py"):
+        path = self.touch(rel, "x = 1\n")
+        r = self.run_hook(os.path.join(HOOKS, "format_file.py"), dict(self.SESSION, tool_input={"file_path": path}))
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def stop(self, active=False):
+        out = self.hook("done_gate.py", dict(self.SESSION, stop_hook_active=active))
+        return json.loads(out) if out else {}
+
+    def test_off_by_default(self):
+        self.write_cct(format_on_edit=False, lint_on_edit=False)
+        self.edit()
+        self.assertEqual(self.stop(), {})
+        self.assertFalse(os.path.exists(self.p(".claude", "cct-state")))
+
+    def test_turn_without_edits_runs_nothing(self):
+        self.gate("open('ran', 'w'); sys.exit(1)")
+        self.assertEqual(self.stop(), {})
+        self.assertFalse(os.path.exists(self.p("ran")))
+
+    def test_failure_blocks_with_the_output_tail(self):
+        self.gate("sys.exit(0)", "print('\\n'.join(f'line {i}' for i in range(100))); print('2 tests failed'); sys.exit(1)",
+                  "open('third', 'w')")
+        self.edit()
+        r = self.stop()
+        self.assertEqual(r["decision"], "block")
+        self.assertIn("failed (exit 1)", r["reason"])
+        self.assertIn("2 tests failed", r["reason"])
+        self.assertIn("earlier lines", r["reason"])
+        self.assertNotIn("line 5\n", r["reason"])
+        self.assertFalse(os.path.exists(self.p("third")), "stops at the first failing command")
+
+    def test_passing_checks_clear_the_mark(self):
+        self.gate("sys.exit(0)")
+        self.edit()
+        self.assertEqual(self.stop(), {})
+        self.gate("sys.exit(1)")
+        self.assertEqual(self.stop(), {}, "nothing edited since the checks passed")
+
+    def test_fix_then_finish(self):
+        self.gate("sys.exit(0 if __import__('os').path.exists('fixed') else 1)")
+        self.edit()
+        self.assertEqual(self.stop()["decision"], "block")
+        self.touch("fixed")
+        self.edit()
+        self.assertEqual(self.stop(active=True), {})
+
+    def test_no_edits_after_block_lets_claude_finish(self):
+        self.gate("sys.exit(1)")
+        self.edit()
+        self.assertEqual(self.stop()["decision"], "block")
+        r = self.stop(active=True)
+        self.assertNotIn("decision", r)
+        self.assertIn("changed nothing", r["systemMessage"])
+        self.assertEqual(self.stop(), {}, "the mark is cleared")
+
+    def test_attempts_are_capped(self):
+        self.gate("sys.exit(1)", attempts=2)
+        self.edit()
+        self.assertEqual(self.stop()["decision"], "block")
+        self.edit()
+        self.assertEqual(self.stop(active=True)["decision"], "block")
+        self.edit()
+        r = self.stop(active=True)
+        self.assertNotIn("decision", r)
+        self.assertIn("after 2 tries", r["systemMessage"])
+
+    def test_a_new_user_turn_resets_attempts(self):
+        self.gate("sys.exit(1)", attempts=1)
+        self.edit()
+        self.assertEqual(self.stop()["decision"], "block")
+        self.edit()
+        self.assertEqual(self.stop()["decision"], "block")
+
+    def test_timeout_finishes_unchecked(self):
+        self.gate("time.sleep(30)", timeout=1)
+        self.edit()
+        r = self.stop()
+        self.assertNotIn("decision", r)
+        self.assertIn("didn't finish within 1 s", r["systemMessage"])
+
+    def test_sessions_are_separate(self):
+        self.gate("sys.exit(1)")
+        self.edit()
+        self.assertEqual(self.hook("done_gate.py", {"session_id": "other"}), "")
+
+    def git_project(self):
+        self.touch("src/app.py", "x = 1\n")
+        self.touch("notes.txt", "uncommitted before the session\n")
+        subprocess.run(["git", "init", "-q"], cwd=self.dir, check=True)
+        subprocess.run(["git", "add", "src"], cwd=self.dir, check=True)
+        self.assertEqual(self.hook("session_start.py", self.SESSION), "")
+
+    def test_shell_edits_are_caught_in_git(self):
+        self.gate("sys.exit(1)")
+        self.git_project()
+        self.assertEqual(self.stop(), {}, "existing uncommitted changes don't count")
+        with open(self.p("src", "app.py"), "a") as f:
+            f.write("y = 2\n")  # as if Claude ran sed: no Edit, so format_file.py never saw it
+        self.assertEqual(self.stop()["decision"], "block")
+
+    def test_shell_fix_after_block_is_rechecked(self):
+        self.gate("sys.exit(0 if __import__('os').path.exists('fixed') else 1)")
+        self.git_project()
+        self.touch("src/new.py")
+        self.assertEqual(self.stop()["decision"], "block")
+        self.touch("fixed")
+        self.assertEqual(self.stop(active=True), {})
+        self.assertEqual(self.stop(), {}, "nothing changed since the checks passed")
+
+    def test_files_written_by_the_checks_dont_count(self):
+        self.gate("import os; open('runs', 'a').write('x'); open('coverage.out', 'w').write(str(os.getpid()))")
+        self.git_project()
+        self.edit()
+        self.assertEqual(self.stop(), {})
+        self.assertEqual(self.stop(), {})
+        with open(self.p("runs")) as f:
+            self.assertEqual(f.read(), "x")
+
+    def test_runs_in_the_project_with_ci_set(self):
+        self.gate("import os; sys.exit(0 if os.environ.get('CI') and os.path.exists('.claude') else 1)")
+        self.edit()
+        self.assertEqual(self.stop(), {})
+
+
 class SessionStartTest(TempDirCase):
     def test_silent_without_marker(self):
         self.assertEqual(self.hook("session_start.py", {}), "")
