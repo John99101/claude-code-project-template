@@ -95,14 +95,17 @@ Tested rules for **Python, TypeScript/JavaScript, Go, Rust and Java/Kotlin**: id
 | `/setup` | Runs the setup wizard. With no marker present it re-tunes: tell it what to change. `/setup --defaults` skips all questions. |
 | `/check` | Lint → type check → tests, using the commands table. Summarises, then fixes failures caused by recent changes. |
 | `/review-changes` | Pulls live `git status` and `git diff` into the prompt, runs the reviewer (and the security auditor when relevant) in parallel, and asks which findings to fix. |
+| `/start-issue <n>` | Reads a GitHub or GitLab issue, creates a branch named in house style, finds the code involved and shows a plan. Waits for your OK before editing. |
 | `/commit` | Shows live status and recent log, writes a message in the project's style, commits. Never pushes. |
+| `/pr` | Pushes the branch and opens a pull request (GitLab: merge request) using the repo's PR template: summary, linked issues, and a test plan that ticks only the checks that actually ran. Shows the draft first. Never merges. |
+| `/handoff` | Writes `.claude-handoff.md`: goal, what's done, what's in progress, decisions, open questions, next steps. The next session shows a notice; `/handoff resume` picks it up. The file is personal and gitignored. |
 | `/template-update` | Updates the kit from GitHub, keeping your customisations (see [§11](#11-updating-customising-and-removing)). |
 
 **Claude uses these when the task fits:**
 
 | Skill | Triggers when… |
 |---|---|
-| `setup` | A session notice says setup is pending, or you want to change how Claude works here |
+| `setup` | You want to set up or change how Claude works here |
 | `remember-preference` | You say "always…", "never…", "from now on…", or correct the same thing twice. It saves the preference to the right file. |
 | `write-tests` | You add a feature, fix a bug, or ask for tests |
 | `debug-issue` | Something is broken and the cause isn't obvious. It enforces reproduce → hypothesise → fix the root cause → regression test. |
@@ -130,7 +133,7 @@ Agents run in a **separate context window**, so a long exploration or review doe
 | `protect_files.py` | Before every file edit | Blocks edits to secrets and git internals; asks before lockfiles and CI |
 | `format_file.py` | After every file edit | Formats the file with *your project's* formatter, then lints it. **Lint problems go straight back to Claude**, which fixes them before moving on instead of finding them later at `/check`. To keep credits in check, a file that still has problems after `lint_max_repeats` reports in a row (default 3) isn't reported again in that session, and you're told. If the project configures a formatter or linter that isn't installed, you're told once per session instead of the step being skipped silently. |
 | `done_gate.py` | When Claude finishes a turn | Off until `done_gate.commands` is set. If Claude changed files in the turn, runs those commands (your done checklist) and **sends a failure back to Claude**, which keeps working instead of saying it's done. See [the done gate](#the-done-gate) below. |
-| `statusline.py` | Status line | `Opus · my-app (main) · guard standard · setup done` |
+| `statusline.py` | Status line | `Opus · my-app (main) · $0.42 · guard standard · setup done`. The cost is Claude Code's own estimate for the session; hide it with `"statusline_cost": false`. |
 
 #### The done gate
 
@@ -147,6 +150,7 @@ Agents run in a **separate context window**, so a long exploration or review doe
 - A command that runs longer than `timeout` seconds (in total, up to 580) doesn't count as a failure. The turn finishes and you're told it wasn't checked.
 - Files the checks themselves write (coverage reports, caches) don't count as changes.
 - **It costs credits.** Each failure Claude fixes is extra work in your session, which is why `attempts` caps it and `/setup` recommends only the fast checks.
+- **Only related tests:** a command may contain `{files}`, which the gate fills with the changed files, e.g. `npx vitest related --run {files}` or `npx jest --findRelatedTests --passWithNoTests {files}`. It needs git; with no changed files the command is skipped. Faster turns, and fewer failures that have nothing to do with the change.
 - **Try it without Claude:** `python3 .claude/hooks/done_gate.py --check` runs the commands once and prints PASS, FAIL or TIMEOUT for each, with the total time. `/setup` runs it right after you turn the gate on, and asks what to do about a failing command instead of changing your code.
 
 #### Notices at session start
@@ -155,6 +159,9 @@ These go to you as a message in the terminal. Claude never sees them, so they us
 
 - **Setup reminder:** setup isn't finished, or (device installs) the project has no `CLAUDE.md`. Run `/setup`, or create `.claude/cct-ignore` to stop it in one project.
 - **Drift check:** a command in `CLAUDE.md` (the Commands table and the done checklist) or in `done_gate.commands` no longer fits the project: a `package.json` script, `Makefile` target, `justfile` recipe, file or folder that's gone, or a tool that isn't installed. It only reads files and never runs the commands. Shown when the list changes, and again after a week if nothing was fixed. Off with `"drift_check": false`.
+- **Environment check:** the lockfile changed since the last install (`node_modules`, `.venv`) or nothing is installed yet; `.env` is missing or lacks keys that `.env.example` lists (only key names are read, never values); or `node`/`python` doesn't match `.nvmrc`, `.node-version`, `engines` or `.python-version`. Off with `"env_check": false`.
+- **Team changes:** commits by others since your last session changed `CLAUDE.md`, `.claude/` or `.mcp.json`. It names the files and authors and gives the `git diff` command to see them. Off with `"team_notice": false`.
+- **Handoff:** a `.claude-handoff.md` from `/handoff` is waiting. Run `/handoff resume`.
 - **Missing tools** (from `format_file.py`): the project configures ruff, prettier, eslint, biome, golangci-lint and so on, but the tool isn't installed, so edits skip it.
 - **Update notice** (opt-in, script installs only): see [§11](#11-updating-customising-and-removing).
 
@@ -258,6 +265,9 @@ The guard reads commands the way a shell does. It understands quotes (so `git co
 | `protected_paths` | `[]` | Globs Claude must never edit, e.g. `["vendor/", "src/gen/**"]`. `dir/` covers a whole folder. |
 | `setup_reminder` | `true` | Session-start reminder when setup is pending (shown to you only) |
 | `drift_check` | `true` | Session-start notice when commands in `CLAUDE.md` or `done_gate` no longer match the project (shown to you only) |
+| `env_check` | `true` | Session-start notice for stale installs, missing `.env` keys and wrong runtime versions (shown to you only) |
+| `team_notice` | `true` | Session-start notice when teammates changed `CLAUDE.md`, `.claude/` or `.mcp.json` (shown to you only) |
+| `statusline_cost` | `true` | Show the session's cost in the status line |
 | `update_check` | `false` | Weekly check of the kit's latest GitHub release, with a notice when it's newer. Script installs only; set it in `~/.claude/cct.json`. |
 | `done_gate` | `{"commands": [], "timeout": 120, "attempts": 3}` | Commands that must pass before Claude finishes a turn that changed files. Empty turns it off. Uses credits when a check fails. See [the done gate](#the-done-gate). |
 

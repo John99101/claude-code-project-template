@@ -5,6 +5,13 @@ All notable changes to this kit. The format follows [Keep a Changelog](https://k
 ## [Unreleased]
 
 ### Added
+- **`/pr`** pushes the branch and opens a pull request (GitLab: merge request) from the repo's PR template, with a summary, linked issues and a test plan that ticks only checks that actually ran. It shows the draft first and never merges.
+- **`/start-issue <n>`** reads a GitHub or GitLab issue, creates a branch in house style, finds the code involved and shows a plan, then waits for your OK.
+- **`/handoff`** saves where a task stands to `.claude-handoff.md` (gitignored), and `/handoff resume` picks it up in a later session. Session start tells you when a note is waiting.
+- **Environment check** at session start: a lockfile newer than the last install (or nothing installed), a missing `.env` or keys that `.env.example` lists (names only, never values), and `node`/`python` versions that don't match `.nvmrc`, `.node-version`, `engines` or `.python-version`. Shown to you only. `"env_check": false` turns it off.
+- **Team-change notice:** when teammates' commits since your last session changed `CLAUDE.md`, `.claude/` or `.mcp.json`, session start names the files and authors and gives the `git diff` to see them. `"team_notice": false` turns it off.
+- **Session cost in the status line**, from Claude Code's own estimate. `"statusline_cost": false` hides it.
+- **Related tests in the done gate:** a command may contain `{files}`, which the gate fills with the changed files (e.g. `npx vitest related --run {files}`). With no changes it's skipped. `/setup` now suggests related-only test commands.
 - **Done gate.** A new `Stop` hook runs the commands in `done_gate.commands` (in `.claude/cct.json`) when Claude finishes a turn that changed files, and sends a failure back so Claude keeps working instead of saying it's done. In a git repository, edits made with shell commands count too. Claude may still finish when it judges a failure out of scope and changes nothing more, or after `done_gate.attempts` tries (default 3). Commands that exceed `done_gate.timeout` (default 120 s) are skipped, with a message. Off by default; `/setup` offers it with the done-checklist commands.
 - **Drift check.** At session start, the kit checks that the commands in `CLAUDE.md` (the Commands table and the done checklist) and in `done_gate.commands` still fit the project: the `package.json` script, `Makefile` target, `justfile` recipe, file or tool still exists. It only reads files, never runs the commands, and tells you, not Claude. Turn off with `"drift_check": false`.
 - **Done gate check without Claude:** `python3 .claude/hooks/done_gate.py --check` runs the gate's commands once and prints PASS, FAIL or TIMEOUT for each, with the total time. `/setup` runs it right after you turn the gate on, and asks whether to fix, keep or drop a failing command instead of changing code.
@@ -19,6 +26,7 @@ All notable changes to this kit. The format follows [Keep a Changelog](https://k
 - Session-start notices no longer repeat after `/clear` or compaction.
 
 ### Fixed
+- The drift check flagged quoted Windows paths in `done_gate.commands` (e.g. `"C:\…\python.exe"`) as missing tools.
 - `rustfmt` used the 2021 edition for every crate. It now reads `edition` from the nearest `Cargo.toml`, and from the workspace root's `[workspace.package]` when the crate sets `edition.workspace = true`.
 
 ## [2.1.0] - 2026-11-11

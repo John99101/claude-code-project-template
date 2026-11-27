@@ -112,9 +112,9 @@ The repository uses Claude Code's standard plugin layout, so nothing in it lives
 | [`templates/CLAUDE.project.md`](templates/CLAUDE.project.md) → `CLAUDE.md` | **Project brief, loaded every session.** Overview, tech stack, commands table, architecture, conventions. Personal overrides go in `CLAUDE.local.md` (git-ignored). |
 | [`rules/`](rules) → `.claude/rules/` | **Conventions by topic:** code style, testing, API design, security, git workflow. Path-scoped rules load only for matching files. |
 | [`rule-packs/`](rule-packs) → `.claude/cct/` | **Ready-made language rules** for Python, TypeScript/JavaScript, Go, Rust and Java/Kotlin. Setup installs the ones your project uses. |
-| [`skills/`](skills) → `.claude/skills/` | **Slash commands and on-demand know-how.** You run `/setup`, `/check`, `/review-changes`, `/commit` and `/template-update`. Claude picks up `remember-preference`, `write-tests`, `debug-issue` and `release-notes` when relevant. |
+| [`skills/`](skills) → `.claude/skills/` | **Slash commands and on-demand know-how.** You run `/setup`, `/start-issue`, `/check`, `/review-changes`, `/commit`, `/pr`, `/handoff` and `/template-update`. Claude picks up `remember-preference`, `write-tests`, `debug-issue` and `release-notes` when relevant. |
 | [`agents/`](agents) → `.claude/agents/` | **Specialist subagents** with their own context, tools and model: planner, reviewer, security auditor, test writer. |
-| [`hooks/`](hooks) → `.claude/hooks/` | **Enforced behaviour:** shell-command guard, secret-file protection, format on every edit, optional lint feedback and a done gate that runs your checks before Claude finishes, notices for unfinished setup, outdated commands, missing tools and (opt-in) new kit versions, status line. |
+| [`hooks/`](hooks) → `.claude/hooks/` | **Enforced behaviour:** shell-command guard, secret-file protection, format and lint on every edit, an optional done gate that runs your checks (or only the tests related to the change) before Claude finishes, notices for unfinished setup, outdated commands, stale installs and `.env` keys, wrong runtime versions, teammates' config changes, missing tools, a waiting handoff and (opt-in) new kit versions, and a status line with the session's cost. |
 | [`templates/settings.project.json`](templates/settings.project.json) → `.claude/settings.json` | **Permissions, tool access, model, hooks and status line** (hooks and status line are added by the installer). Personal overrides go in `settings.local.json`. |
 | [`templates/mcp.json`](templates/mcp.json) → `.mcp.json` | **External tools** (GitHub, Jira, Slack, databases…), shared via git. Credentials stay in `${ENV_VARS}`. |
 | [`templates/cct.json`](templates/cct.json) → `.claude/cct.json` | **Kit switches:** guard level, format and lint on edit, lockfile protection, never-edit paths, done gate, setup reminder, drift check, update notice. |
@@ -126,7 +126,7 @@ The repository uses Claude Code's standard plugin layout, so nothing in it lives
 .
 ├── .claude-plugin/               # plugin manifest, marketplace entry, icon
 ├── skills/                       # setup (+ questions, MCP catalog), check, review-changes, commit,
-│                                 # template-update, remember-preference, write-tests, debug-issue, release-notes
+│                                 # pr, start-issue, handoff, template-update, remember-preference, write-tests, debug-issue, release-notes
 ├── agents/                       # planner, reviewer, security-auditor, test-writer
 ├── hooks/                        # hooks.json + session_start, guard_bash, protect_files, format_file, statusline
 ├── rules/                        # code-style, testing, api-design, security, git-workflow

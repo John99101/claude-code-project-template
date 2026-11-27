@@ -6,6 +6,10 @@ Configure in cct.json:  "done_gate": {"commands": ["npm test", "npm run lint"], 
 An empty command list (the default) turns it off. Each block sends output to Claude, and its fix uses the user's
 credits, so /setup only turns this on when the user chooses it.
 
+A command may contain {files}: the changed files in the working tree (git only), quoted, so a test runner checks only
+what's related, e.g. "npx vitest related --run {files}" or "npx jest --findRelatedTests {files}". When nothing has
+changed, or outside git, such a command is skipped.
+
 `python3 done_gate.py --check` runs the commands once and prints pass or fail for each, without Claude: setup uses it
 to confirm the commands work, and users can run it any time.
 
@@ -21,6 +25,7 @@ isn't treated as a failure: the turn finishes and the user is told it wasn't che
 import hashlib
 import json
 import os
+import shlex
 import subprocess
 import sys
 import time
@@ -61,9 +66,8 @@ def state_path(session_id):
     return _state_path("done-gate", session_id, os.path.abspath(project_dir()))
 
 
-def tree_fingerprint():
-    """A hash of the git working tree's changed and untracked files (paths, sizes and modification times), or None
-    outside git. Cheap: it reads `git status` and stats the files it lists, without reading their contents."""
+def git_changes():
+    """[(status entry, relative path)] for the git working tree's changed and untracked files, or None outside git."""
     proj = project_dir()
     try:
         r = subprocess.run(["git", "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all"],
@@ -73,7 +77,7 @@ def tree_fingerprint():
     if r.returncode != 0:
         return None
     own = os.path.normcase(os.path.realpath(state_dir())) + os.sep  # this hook's state, when ~ is the project
-    h = hashlib.sha256()
+    out = []
     entries = r.stdout.decode("utf-8", "replace").split("\0")
     i = 0
     while i < len(entries):
@@ -83,9 +87,22 @@ def tree_fingerprint():
             continue
         if entry[0] in "RC":
             i += 1  # the original path of a rename or copy follows
-        full = os.path.join(proj, entry[3:])
-        if os.path.normcase(os.path.realpath(full)).startswith(own):
+        if os.path.normcase(os.path.realpath(os.path.join(proj, entry[3:]))).startswith(own):
             continue
+        out.append((entry, entry[3:]))
+    return out
+
+
+def tree_fingerprint():
+    """A hash of the git working tree's changed and untracked files (paths, sizes and modification times), or None
+    outside git. Cheap: it reads `git status` and stats the files it lists, without reading their contents."""
+    changes = git_changes()
+    if changes is None:
+        return None
+    proj = project_dir()
+    h = hashlib.sha256()
+    for entry, rel in changes:
+        full = os.path.join(proj, rel)
         h.update(entry.encode() + b"\0")
         try:
             st = os.stat(full)
@@ -115,6 +132,24 @@ def record_baseline(payload, cfg):
     if "tree" not in state:  # a resumed or compacted session keeps its earlier baseline
         state["tree"] = tree_fingerprint()
         write_state(path, state)
+
+
+def quote(path):
+    if os.name == "nt":
+        return f'"{path}"' if any(c in path for c in ' &()^%!;,') else path
+    return shlex.quote(path)
+
+
+def expand(command):
+    """The command with {files} filled in, or None when it has nothing to check."""
+    if "{files}" not in command:
+        return command
+    changes = git_changes() or []
+    proj = project_dir()
+    files = [rel for _, rel in changes if os.path.isfile(os.path.join(proj, rel))]
+    if not files:
+        return None
+    return command.replace("{files}", " ".join(quote(f) for f in files))
 
 
 def run(command, timeout):
@@ -167,8 +202,11 @@ def main():
 
     deadline = time.monotonic() + timeout
     for command in commands:
+        expanded = expand(command)
+        if expanded is None:
+            continue  # {files} with no changed files: nothing related to check
         left = deadline - time.monotonic()
-        code, output = run(command, left) if left >= 1 else (None, "")
+        code, output = run(expanded, left) if left >= 1 else (None, "")
         if code is None:
             finish(f"`{command}` didn't finish within {timeout} s, so the done checklist wasn't checked. Raise "
                    f"done_gate.timeout in .claude/cct.json if it's usually slower.")
@@ -203,9 +241,13 @@ def check():
     start = time.monotonic()
     deadline = start + timeout
     for command in commands:
+        expanded = expand(command)
+        if expanded is None:
+            print(f"SKIP     {command}  (no changed files for {{files}}; the gate skips it too)")
+            continue
         left = deadline - time.monotonic()
         began = time.monotonic()
-        code, output = run(command, left) if left >= 1 else (None, "")
+        code, output = run(expanded, left) if left >= 1 else (None, "")
         took = time.monotonic() - began
         if code is None:
             print(f"TIMEOUT  {command}  (the {timeout} s limit for all commands ran out)")

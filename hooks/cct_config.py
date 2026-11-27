@@ -20,6 +20,9 @@ DEFAULTS = {
     "setup_reminder": True,
     "drift_check": True,            # session start: commands in CLAUDE.md and cct.json still exist (no credits)
     "update_check": False,          # session start: weekly look at the kit's latest GitHub release (no credits)
+    "env_check": True,              # session start: stale installs, .env keys, runtime versions (no credits)
+    "team_notice": True,            # session start: teammates changed CLAUDE.md, .claude/ or .mcp.json (no credits)
+    "statusline_cost": True,        # status line shows the session's cost as Claude Code reports it
     "done_gate": {"commands": [], "timeout": 120, "attempts": 3},  # checks run before Claude finishes
 }
 STATE_DAYS = 7  # state files untouched for this long are deleted
@@ -134,6 +137,23 @@ def write_state(path, state):
             json.dump(state, f)
     except OSError:
         pass
+
+
+def once(kind, scope, text, repeat_days=7):
+    """`text` if it wasn't shown for this kind and scope (e.g. the project), or was shown over `repeat_days` ago;
+    else None. A text that changes counts as new. With no text, the record is cleared, so the next problem shows."""
+    path = state_path(kind, scope)
+    state = read_state(path)
+    if not text:
+        if state:
+            write_state(path, {})
+        return None
+    digest = hashlib.sha256(text.encode()).hexdigest()
+    now = time.time()
+    if state.get("shown") == digest and now - float(state.get("at", 0) or 0) < repeat_days * 86400:
+        return None
+    write_state(path, {"shown": digest, "at": now})
+    return text
 
 
 def prune_state():
