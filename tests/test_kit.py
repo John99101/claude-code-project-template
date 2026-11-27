@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOOKS = os.path.join(ROOT, "hooks")
@@ -74,6 +75,25 @@ class TempDirCase(unittest.TestCase):
 
     def install(self, *args, kit=INSTALL):
         return subprocess.run([sys.executable, kit, *args], capture_output=True, text=True, env=self.env, timeout=120)
+
+    def fake_tool(self, name, code="sys.exit(0)\n"):
+        """A stand-in command on a PATH that holds nothing else, so real tools don't interfere."""
+        script = self.touch(f"fakebin_src/{name}.py", "import sys\n" + code)
+        if WINDOWS:
+            self.touch(f"fakebin/{name}.cmd", f'@"{sys.executable}" "{script}" %*\r\n')
+        else:
+            path = self.touch(f"fakebin/{name}", f'#!/bin/sh\nexec "{sys.executable}" "{script}" "$@"\n')
+            os.chmod(path, os.stat(path).st_mode | stat.S_IEXEC)
+        self.env["PATH"] = self.p("fakebin")
+
+    def notice(self, name, payload, hooks_dir=HOOKS):
+        """The user-only message a hook printed, or "". Fails if the hook printed anything Claude would read."""
+        out = self.hook(name, payload, hooks_dir)
+        if not out:
+            return ""
+        data = json.loads(out)
+        self.assertEqual(set(data), {"systemMessage"}, "only a systemMessage may be printed")
+        return data["systemMessage"]
 
 
 class GuardBashTest(TempDirCase):
@@ -274,15 +294,50 @@ class FormatFileTest(TempDirCase):
         r = self.run_hook(os.path.join(HOOKS, "format_file.py"), {"tool_input": {"file_path": path}})
         self.assertEqual((r.returncode, r.stderr), (0, ""))
 
-    def fake_tool(self, name, code):
-        """A stand-in command on a PATH that holds nothing else, so real Go or Rust tools don't interfere."""
-        script = self.touch(f"fakebin_src/{name}.py", "import sys\n" + code)
-        if WINDOWS:
-            self.touch(f"fakebin/{name}.cmd", f'@"{sys.executable}" "{script}" %*\r\n')
-        else:
-            path = self.touch(f"fakebin/{name}", f'#!/bin/sh\nexec "{sys.executable}" "{script}" "$@"\n')
-            os.chmod(path, os.stat(path).st_mode | stat.S_IEXEC)
-        self.env["PATH"] = self.p("fakebin")
+    def test_lint_reports_stop_after_the_repeat_limit(self):
+        """Each report makes Claude work (and spend credits) on the file, so a file that stays dirty is capped."""
+        self.fake_ruff()
+        self.write_cct(lint_max_repeats=2)
+        payload = {"session_id": "s1", "tool_input": {"file_path": self.touch("app.py", "import os\n")}}
+        script = os.path.join(HOOKS, "format_file.py")
+        self.assertEqual(self.run_hook(script, payload).returncode, 2)
+        last = self.run_hook(script, payload)
+        self.assertEqual(last.returncode, 2)
+        self.assertIn("report 2 of 2", last.stderr)
+        capped = self.notice("format_file.py", payload)
+        self.assertIn("no longer sent to Claude", capped)
+        self.assertEqual(self.notice("format_file.py", payload), "", "the user is told once")
+        r = self.run_hook(script, dict(payload, session_id="s2"))
+        self.assertEqual(r.returncode, 2, "a new session starts a new count")
+
+    def test_a_clean_lint_resets_the_count(self):
+        self.fake_ruff()
+        self.write_cct(lint_max_repeats=1)
+        dirty = {"session_id": "s1", "tool_input": {"file_path": self.touch("app.py", "import os\n")}}
+        script = os.path.join(HOOKS, "format_file.py")
+        self.assertEqual(self.run_hook(script, dirty).returncode, 2)
+        self.touch("fake_ruff.py", "import sys\n")  # ruff now finds nothing
+        self.assertEqual(self.run_hook(script, dirty).returncode, 0)
+        self.fake_ruff()
+        self.assertEqual(self.run_hook(script, dirty).returncode, 2, "problems after a clean run count from 1")
+
+    def test_missing_configured_tool_is_reported_to_the_user_once(self):
+        self.touch("pyproject.toml", "[tool.ruff]\nline-length = 100\n")
+        self.env["PATH"] = self.p("emptybin")
+        payload = {"session_id": "s1", "tool_input": {"file_path": self.touch("app.py", "x = 1\n")}}
+        message = self.notice("format_file.py", payload)
+        self.assertIn("ruff", message)
+        self.assertIn("formatting and linting", message)
+        self.assertEqual(self.notice("format_file.py", payload), "", "once per session")
+        self.assertIn("ruff", self.notice("format_file.py", dict(payload, session_id="s2")))
+
+    def test_missing_tool_is_quiet_when_not_configured_or_turned_off(self):
+        self.env["PATH"] = self.p("emptybin")
+        payload = {"tool_input": {"file_path": self.touch("app.py", "x = 1\n")}}
+        self.assertEqual(self.notice("format_file.py", payload), "", "no ruff config, nothing to report")
+        self.touch("pyproject.toml", "[tool.ruff]\n")
+        self.write_cct(format_on_edit=False, lint_on_edit=False)
+        self.assertEqual(self.notice("format_file.py", payload), "")
 
     def lint(self, rel):
         return self.run_hook(os.path.join(HOOKS, "format_file.py"), {"tool_input": {"file_path": self.p(*rel.split("/"))}})
@@ -507,20 +562,161 @@ class DoneGateTest(TempDirCase):
         self.assertEqual(self.stop(), {})
 
 
+    def check(self):
+        return subprocess.run([sys.executable, os.path.join(HOOKS, "done_gate.py"), "--check"],
+                              capture_output=True, text=True, env=self.env, timeout=60)
+
+    def test_check_reports_each_command(self):
+        self.gate("sys.exit(0)", "print('boom'); sys.exit(3)", "open('third', 'w')")
+        r = self.check()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("PASS", r.stdout)
+        self.assertIn("FAIL", r.stdout)
+        self.assertIn("exit 3", r.stdout)
+        self.assertIn("boom", r.stdout)
+        self.assertFalse(os.path.exists(self.p("third")), "stops at the first failure, like the gate")
+        self.assertFalse(os.path.exists(self.p(".claude", "cct-state")), "--check leaves no gate state")
+
+    def test_check_passes_and_without_commands_says_off(self):
+        self.gate("sys.exit(0)")
+        r = self.check()
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("PASS", r.stdout)
+        self.write_cct()
+        r = self.check()
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("off", r.stdout)
+
+
 class SessionStartTest(TempDirCase):
     def test_silent_without_marker(self):
         self.assertEqual(self.hook("session_start.py", {}), "")
 
-    def test_prompts_when_setup_pending(self):
+    def test_reminder_goes_to_the_user_not_claude(self):
         self.touch(".claude/cct-pending")
-        out = self.hook("session_start.py", {})
-        self.assertIn("[cct]", out)
-        self.assertIn("/setup", out)
+        message = self.notice("session_start.py", {"source": "startup"})
+        self.assertIn("[cct]", message)
+        self.assertIn("/setup", message)
+
+    def test_quiet_after_clear_and_compaction(self):
+        self.touch(".claude/cct-pending")
+        for source in ("clear", "compact"):
+            self.assertEqual(self.hook("session_start.py", {"source": source}), "")
 
     def test_reminder_can_be_disabled(self):
         self.write_cct(setup_reminder=False)
         self.touch(".claude/cct-pending")
         self.assertEqual(self.hook("session_start.py", {}), "")
+
+
+class DriftCheckTest(TempDirCase):
+    CLAUDE_MD = ("# app\n\n## Commands\n\n| Task | Command |\n|---|---|\n| Test (all) | `npm test` |\n"
+                 "| Lint | `npm run lint` |\n| Build | `{{BUILD_CMD}}` |\n\n## Before you say a task is done\n\n"
+                 "- Tests pass: `npm test`\n- `/check` is clean\n\n## Working agreements\n\n- `npm run nope` isn't a command\n")
+
+    def setUp(self):
+        super().setUp()
+        self.fake_tool("npm")
+        self.fake_tool("make")
+        self.touch("CLAUDE.md", self.CLAUDE_MD)
+
+    def scripts(self, **scripts):
+        self.touch("package.json", json.dumps({"scripts": scripts}))
+
+    def drift(self):
+        return self.notice("session_start.py", {"source": "startup"})
+
+    def test_missing_script_is_reported(self):
+        self.scripts(test="jest")
+        message = self.drift()
+        self.assertIn("`npm run lint` in CLAUDE.md", message)
+        self.assertIn('no "lint" script', message)
+        self.assertNotIn("npm test", message)
+        self.assertNotIn("nope", message, "only the Commands table and the done checklist are checked")
+        self.assertNotIn("/check", message)
+
+    def test_nothing_drifted_is_silent(self):
+        self.scripts(test="jest", lint="eslint .")
+        self.assertEqual(self.drift(), "")
+
+    def test_shown_once_until_it_changes(self):
+        self.scripts(test="jest")
+        self.assertIn("lint", self.drift())
+        self.assertEqual(self.drift(), "")
+        self.scripts()
+        self.assertIn("npm test", self.drift())
+
+    def test_done_gate_commands_are_checked(self):
+        self.scripts(test="jest", lint="eslint .")
+        self.touch("Makefile", "test:\n\techo ok\n")
+        self.write_cct(done_gate={"commands": ["make test", "make check", "pytest -q"]})
+        message = self.drift()
+        self.assertIn("no `check` target", message)
+        self.assertIn("`pytest` isn't installed", message)
+        self.assertNotIn("make test", message)
+
+    def test_off_and_while_setup_is_pending(self):
+        self.scripts()
+        self.write_cct(drift_check=False)
+        self.assertEqual(self.drift(), "")
+        self.write_cct()
+        self.touch(".claude/cct-pending")
+        message = self.drift()
+        self.assertIn("setup isn't finished", message)
+        self.assertNotIn("npm test", message)
+
+    def test_commands_it_cant_judge_pass(self):
+        self.fake_tool("pnpm")
+        self.fake_tool("uv")
+        os.environ["PATH"], old_path = self.env["PATH"], os.environ.get("PATH", "")  # drift runs in-process here
+        self.addCleanup(os.environ.__setitem__, "PATH", old_path)
+        sys.path.insert(0, HOOKS)
+        try:
+            import drift
+        finally:
+            sys.path.remove(HOOKS)
+        for command in ("echo $(foo)", "pnpm --filter api test", "uv run pytest", 'FOO=1 "unclosed'):
+            self.assertIsNone(drift.problem(command, self.dir), command)
+        self.assertIn("doesn't exist", drift.problem("./scripts/missing.sh", self.dir))
+        self.assertIn("doesn't exist", drift.problem("cd web && npm test", self.dir))
+
+
+class UpdateCheckTest(TempDirCase):
+    def setUp(self):
+        super().setUp()
+        os.makedirs(self.p(".claude", "cct"))
+        with open(self.p(".claude", "cct", "source.json"), "w") as f:
+            json.dump({"repo": "example/kit", "version": "2.1.0", "mode": "project"}, f)
+        self.release("v9.9.9")
+
+    def release(self, tag):
+        path = self.touch("release.json", json.dumps({"tag_name": tag}))
+        self.env["CCT_RELEASES_URL"] = "file:" + urllib.request.pathname2url(path)
+
+    def check(self):
+        return self.notice("session_start.py", {"source": "startup"})
+
+    def test_off_by_default(self):
+        self.assertEqual(self.check(), "")
+        self.assertFalse(os.path.exists(self.p(".claude", "cct-state", "update-check.json")), "no request made")
+
+    def test_newer_release_is_shown_once_a_week(self):
+        self.write_cct(update_check=True)
+        message = self.check()
+        self.assertIn("9.9.9", message)
+        self.assertIn("2.1.0", message)
+        self.assertIn("install.py --project . --update", message)
+        self.assertEqual(self.check(), "")
+
+    def test_up_to_date_is_silent(self):
+        self.write_cct(update_check=True)
+        self.release("v2.1.0")
+        self.assertEqual(self.check(), "")
+
+    def test_unreachable_server_is_silent(self):
+        self.write_cct(update_check=True)
+        self.env["CCT_RELEASES_URL"] = "file:" + urllib.request.pathname2url(self.p("missing.json"))
+        self.assertEqual(self.check(), "")
 
 
 class StatusLineTest(TempDirCase):

@@ -1,17 +1,28 @@
-"""Shared helpers for the cct hooks: config loading, hook I/O, and device/project de-duplication."""
+"""Shared helpers for the cct hooks: config loading, hook I/O, and device/project de-duplication.
+
+Credit rule: whatever sends text to Claude makes it do follow-up work, which uses the user's credits. Useful ones (lint
+feedback, the done gate) run, but each has a cap (lint_max_repeats, done_gate.attempts). Plain notices go to the user
+only, via notify(), which Claude never sees, so they cost nothing.
+"""
+import hashlib
 import json
 import os
 import sys
+import time
 
 DEFAULTS = {
     "guard_level": "standard",      # off | standard | strict
     "format_on_edit": True,
-    "lint_on_edit": True,
+    "lint_on_edit": True,           # sends lint problems to Claude, whose fixes use credits...
+    "lint_max_repeats": 3,          # ...so a file stops reporting after this many reports in a row (0: no cap)
     "protect_lockfiles": True,
     "protected_paths": [],          # globs relative to the project, e.g. "vendor/", "src/gen/**"
     "setup_reminder": True,
+    "drift_check": True,            # session start: commands in CLAUDE.md and cct.json still exist (no credits)
+    "update_check": False,          # session start: weekly look at the kit's latest GitHub release (no credits)
     "done_gate": {"commands": [], "timeout": 120, "attempts": 3},  # checks run before Claude finishes
 }
+STATE_DAYS = 7  # state files untouched for this long are deleted
 
 
 def project_dir():
@@ -84,6 +95,58 @@ def read_input():
         return json.load(sys.stdin)
     except ValueError:
         return {}
+
+
+def notify(*messages):
+    """Show a message to the user only. A hook's systemMessage isn't added to Claude's context, so it costs nothing."""
+    text = "\n\n".join(m for m in messages if m)
+    if text:
+        print(json.dumps({"systemMessage": text}))
+
+
+# Small JSON state files in ~/.claude/cct-state/, shared by the hooks.
+
+def state_dir():
+    return os.path.join(home_claude(), "cct-state")
+
+
+def state_path(kind, *key):
+    """A state file for `kind`, keyed by e.g. the session and project. No key: one file for the device."""
+    if not key:
+        return os.path.join(state_dir(), f"{kind}.json")
+    digest = hashlib.sha256("\0".join(str(k) for k in key).encode()).hexdigest()[:24]
+    return os.path.join(state_dir(), f"{kind}-{digest}.json")
+
+
+def read_state(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def write_state(path, state):
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(state, f)
+    except OSError:
+        pass
+
+
+def prune_state():
+    """Every session leaves state files behind; drop the ones nobody touched for STATE_DAYS."""
+    folder = state_dir()
+    cutoff = time.time() - STATE_DAYS * 86400
+    try:
+        for name in os.listdir(folder):
+            full = os.path.join(folder, name)
+            if name.endswith(".json") and os.path.getmtime(full) < cutoff:
+                os.remove(full)
+    except OSError:
+        pass
 
 
 def decide(decision, reason):

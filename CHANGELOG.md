@@ -6,7 +6,17 @@ All notable changes to this kit. The format follows [Keep a Changelog](https://k
 
 ### Added
 - **Done gate.** A new `Stop` hook runs the commands in `done_gate.commands` (in `.claude/cct.json`) when Claude finishes a turn that changed files, and sends a failure back so Claude keeps working instead of saying it's done. In a git repository, edits made with shell commands count too. Claude may still finish when it judges a failure out of scope and changes nothing more, or after `done_gate.attempts` tries (default 3). Commands that exceed `done_gate.timeout` (default 120 s) are skipped, with a message. Off by default; `/setup` offers it with the done-checklist commands.
+- **Drift check.** At session start, the kit checks that the commands in `CLAUDE.md` (the Commands table and the done checklist) and in `done_gate.commands` still fit the project: the `package.json` script, `Makefile` target, `justfile` recipe, file or tool still exists. It only reads files, never runs the commands, and tells you, not Claude. Turn off with `"drift_check": false`.
+- **Done gate check without Claude:** `python3 .claude/hooks/done_gate.py --check` runs the gate's commands once and prints PASS, FAIL or TIMEOUT for each, with the total time. `/setup` runs it right after you turn the gate on, and asks whether to fix, keep or drop a failing command instead of changing code.
+- **Lint repeat cap.** A file that still has lint problems after `lint_max_repeats` reports in a row (default 3) stops sending them to Claude for the rest of the session, so Claude doesn't burn credits on a linter it can't satisfy. You get a one-line notice, and a clean lint resets the count.
+- **Missing-tool notices.** When the project configures a formatter or linter (ruff, black, prettier, eslint, biome, golangci-lint, rustfmt…) that isn't installed, you're told once per session instead of edits skipping it silently. Setup's summary lists them too.
+- **Update notice (opt-in).** Script installs can get a session-start notice when a newer kit release is out. It asks GitHub at most once a week, sends nothing about you or the project, and never updates by itself. `/setup` asks; it's off otherwise (`"update_check"` in `~/.claude/cct.json`).
 - **Go and Rust lint feedback.** After an edit, the format hook runs `golangci-lint` (or `go vet` when it isn't installed) on the edited file's package, and `cargo clippy` on its crate. Only problems in the edited file go back to Claude, so existing warnings elsewhere don't block every edit. Clippy warnings count, not just errors.
+
+### Changed
+- The session-start setup reminder is now a message to you instead of an instruction to Claude, so it no longer costs tokens. Claude doesn't bring setup up on its own any more.
+- `/setup` names the credit cost of lint feedback and the done gate, and their caps, when it asks about them.
+- Session-start notices no longer repeat after `/clear` or compaction.
 
 ### Fixed
 - `rustfmt` used the 2021 edition for every crate. It now reads `edition` from the nearest `Cargo.toml`, and from the workspace root's `[workspace.package]` when the crate sets `edition.workspace = true`.

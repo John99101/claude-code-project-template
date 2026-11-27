@@ -2,7 +2,11 @@
 """PostToolUse hook for Edit/Write: formats the edited file, then lints it and reports problems back to Claude.
 
 Uses only tools already installed in the project or on PATH; never downloads anything.
-Lint problems are sent to Claude (exit code 2) so it fixes them right away.
+Lint problems are sent to Claude (exit code 2) so it fixes them right away. That fix uses credits, so a file that
+still has problems after "lint_max_repeats" reports in a row (default 3) stops being reported for the rest of the
+session, and the user is told. Formatting sends nothing to Claude.
+When the project configures a formatter or linter that isn't installed, the user (not Claude) is told once per
+session, so the step isn't skipped silently.
 Turn off with cct.json "format_on_edit": false / "lint_on_edit": false.
 """
 import os
@@ -12,7 +16,8 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from cct_config import defer_to_project, load_config, project_dir, read_input  # noqa: E402
+from cct_config import (defer_to_project, load_config, notify, project_dir, read_input, read_state,  # noqa: E402
+                        state_path, write_state)
 from done_gate import mark_edited  # noqa: E402
 
 PRETTIER_EXT = {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".json", ".css", ".scss",
@@ -229,6 +234,116 @@ def diagnostics_for(path, lines, cwd):
     return keep
 
 
+PRETTIER_CONFIGS = [".prettierrc", ".prettierrc.json", ".prettierrc.yml", ".prettierrc.yaml", ".prettierrc.json5",
+                    ".prettierrc.js", ".prettierrc.cjs", ".prettierrc.mjs", ".prettierrc.toml", "prettier.config.js",
+                    "prettier.config.cjs", "prettier.config.mjs", "prettier.config.ts"]
+GOLANGCI_CONFIGS = [".golangci.yml", ".golangci.yaml", ".golangci.toml", ".golangci.json"]
+
+
+def file_mentions(path, pattern):
+    if not path:
+        return False
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            return re.search(pattern, f.read(), re.M) is not None
+    except OSError:
+        return False
+
+
+def missing_tools(path, cfg):
+    """[(tool, what it would do, how to get it)] for tools the project configures but that aren't installed."""
+    ext = os.path.splitext(path)[1].lower()
+    here = os.path.dirname(path)
+    fmt, lint = cfg.get("format_on_edit", True), cfg.get("lint_on_edit", True)
+    pyproject = find_up(here, "pyproject.toml")
+    deps = "install the project's dependencies"
+    out = []
+    if fmt and ext in PRETTIER_EXT and not node_tool(here, "prettier"):
+        if any(find_up(here, c) for c in PRETTIER_CONFIGS) or file_mentions(find_up(here, "package.json"),
+                                                                            r'"prettier"\s*:'):
+            out.append(("prettier", "formatting", deps))
+    if lint and ext in JS_EXT and not node_tool(here, "eslint") and not node_tool(here, "biome"):
+        if any(find_up(here, c) for c in ESLINT_CONFIGS):
+            out.append(("eslint", "linting", deps))
+    biome_configured = find_up(here, "biome.json") or find_up(here, "biome.jsonc")
+    if ext in JS_EXT | {".json", ".css"} and biome_configured and not node_tool(here, "biome"):
+        if fmt and not node_tool(here, "prettier"):
+            out.append(("biome", "formatting", deps))
+        elif lint and ext in JS_EXT and not node_tool(here, "eslint"):
+            out.append(("biome", "linting", deps))
+    if ext == ".py" and (fmt or lint) and not tool("ruff", here):
+        if (find_up(here, "ruff.toml") or find_up(here, ".ruff.toml")
+                or file_mentions(pyproject, r"^\[tool\.ruff")):
+            out.append(("ruff", "formatting and linting" if fmt and lint else "formatting" if fmt else "linting",
+                        "e.g. `uv add --dev ruff` or `pip install ruff`"))
+        elif fmt and file_mentions(pyproject, r"^\[tool\.black") and not tool("black", here):
+            out.append(("black", "formatting", "e.g. `pip install black`"))
+    if ext == ".go":
+        if fmt and not shutil.which("gofmt"):
+            out.append(("gofmt", "formatting", "it comes with Go: https://go.dev/dl/"))
+        if lint and find_up(here, "go.mod"):
+            if any(find_up(here, c) for c in GOLANGCI_CONFIGS) and not shutil.which("golangci-lint"):
+                out.append(("golangci-lint", "linting (go vet runs instead, if Go is installed)",
+                            "https://golangci-lint.run/welcome/install/"))
+            elif not shutil.which("golangci-lint") and not shutil.which("go"):
+                out.append(("go", "linting", "https://go.dev/dl/"))
+    if ext == ".rs":
+        if fmt and not shutil.which("rustfmt"):
+            out.append(("rustfmt", "formatting", "`rustup component add rustfmt`"))
+        if lint and find_up(here, "Cargo.toml") and not shutil.which("cargo"):
+            out.append(("cargo", "linting with clippy", "https://rustup.rs"))
+    return out
+
+
+def missing_tools_notice(payload, path, cfg):
+    """A message for the user about tools not yet reported in this session, or None."""
+    found = missing_tools(path, cfg)
+    if not found:
+        return None
+    state_file = state_path("missing-tools", payload.get("session_id") or "", os.path.abspath(project_dir()))
+    state = read_state(state_file)
+    told = set(state.get("told") or [])
+    new = [t for t in found if t[0] not in told]
+    if not new:
+        return None
+    write_state(state_file, {"told": sorted(told | {t[0] for t in new})})
+    ext = os.path.splitext(path)[1] or os.path.basename(path)
+    lines = [f"- {name}: no {what} for {ext} files. To get it: {how}." for name, what, how in new]
+    return ("[cct] This project configures tools that aren't installed, so edits skip them:\n" + "\n".join(lines)
+            + "\nOr turn the step off with \"format_on_edit\" / \"lint_on_edit\" in .claude/cct.json.")
+
+
+def repeat_limit(cfg):
+    try:
+        return max(0, int(cfg.get("lint_max_repeats", 3)))
+    except (TypeError, ValueError):
+        return 3
+
+
+def count_report(payload, cfg, rel, found):
+    """Track lint reports in a row for one file. Returns (send to Claude, report number, limit, notice for the user)."""
+    limit = repeat_limit(cfg)
+    state_file = state_path("lint-repeats", payload.get("session_id") or "", os.path.abspath(project_dir()))
+    state = read_state(state_file)
+    counts = state.get("counts") if isinstance(state.get("counts"), dict) else {}
+    if not found:
+        if rel in counts:  # clean again: the next problem starts a new count
+            del counts[rel]
+            write_state(state_file, {"counts": counts})
+        return True, 0, limit, None
+    n = int(counts.get(rel, 0) or 0) + 1
+    counts[rel] = n
+    write_state(state_file, {"counts": counts})
+    if limit and n > limit:
+        notice = None
+        if n == limit + 1:
+            notice = (f"[cct] {rel} still has lint problems after {limit} reports in a row, so they're no longer sent "
+                      f"to Claude in this session, to save credits. Check them yourself, or raise \"lint_max_repeats\" "
+                      f"in .claude/cct.json.")
+        return False, n, limit, notice
+    return True, n, limit, None
+
+
 def run(cmd, cwd=None, timeout=30):
     try:
         return subprocess.run(cmd, cwd=cwd or project_dir(), capture_output=True, text=True, timeout=timeout)
@@ -251,6 +366,7 @@ def main():
         if cmd:
             run(cmd)
 
+    capped = None
     if cfg.get("lint_on_edit", True):
         lint = linter_for(path)
         result = run(lint.cmd, lint.cwd, LINT_TIMEOUT if lint.file_only else 30) if lint else None
@@ -261,15 +377,20 @@ def main():
                 lines = diagnostics_for(path, output, lint.cwd)
             elif result.returncode == 1:
                 lines = output
-        if lines:
+        rel = os.path.relpath(path, project_dir())
+        send, n, limit, capped = count_report(payload, cfg, rel, bool(lines)) if result is not None else (True, 0, 0, None)
+        if lines and send:
             shown = lines[:MAX_LINES] + ([f"… {len(lines) - MAX_LINES} more lines"] if len(lines) > MAX_LINES else [])
-            rel = os.path.relpath(path, project_dir())
             name = os.path.splitext(os.path.basename(lint.cmd[0]))[0]
             if lint.cmd[1:2] in (["vet"], ["clippy"]):
                 name += " " + lint.cmd[1]
-            print(f"cct lint: {name} found problems in {rel}. Fix them before moving on:\n"
+            last = (f" This is report {n} of {limit} for this file; after it, problems here aren't sent back. If they "
+                    f"aren't yours to fix, leave them and tell the user." if limit and n == limit else "")
+            print(f"cct lint: {name} found problems in {rel}. Fix them before moving on.{last}\n"
                   + "\n".join(shown), file=sys.stderr)
-            sys.exit(2)
+            sys.exit(2)  # stdout is ignored with exit 2, so a missing-tool notice waits for the next edit
+
+    notify(capped, missing_tools_notice(payload, path, cfg))
 
 
 if __name__ == "__main__":

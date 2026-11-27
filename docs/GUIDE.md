@@ -125,10 +125,10 @@ Agents run in a **separate context window**, so a long exploration or review doe
 
 | Hook | Event | Purpose |
 |---|---|---|
-| `session_start.py` | Session start | Tells Claude setup is unfinished, so it offers `/setup`. Silent otherwise. |
+| `session_start.py` | Session start | Tells **you** when setup is unfinished, when commands have drifted (see [notices](#notices-at-session-start)), and, if you opted in, when a new kit version is out. Claude never sees these, so they cost nothing. Silent otherwise. |
 | `guard_bash.py` | Before every shell command | Blocks destructive commands, asks before risky ones (see [§7](#7-the-safety-model)) |
 | `protect_files.py` | Before every file edit | Blocks edits to secrets and git internals; asks before lockfiles and CI |
-| `format_file.py` | After every file edit | Formats the file with *your project's* formatter, then lints it. **Lint problems go straight back to Claude**, which fixes them before moving on instead of finding them later at `/check`. |
+| `format_file.py` | After every file edit | Formats the file with *your project's* formatter, then lints it. **Lint problems go straight back to Claude**, which fixes them before moving on instead of finding them later at `/check`. To keep credits in check, a file that still has problems after `lint_max_repeats` reports in a row (default 3) isn't reported again in that session, and you're told. If the project configures a formatter or linter that isn't installed, you're told once per session instead of the step being skipped silently. |
 | `done_gate.py` | When Claude finishes a turn | Off until `done_gate.commands` is set. If Claude changed files in the turn, runs those commands (your done checklist) and **sends a failure back to Claude**, which keeps working instead of saying it's done. See [the done gate](#the-done-gate) below. |
 | `statusline.py` | Status line | `Opus · my-app (main) · guard standard · setup done` |
 
@@ -146,6 +146,17 @@ Agents run in a **separate context window**, so a long exploration or review doe
 - Claude is not trapped: if it decides the failure is outside the task, it explains and finishes without changing more files, and is let through. After `attempts` blocked tries in a row, it's let through anyway. Either way you see a message that the checks still fail.
 - A command that runs longer than `timeout` seconds (in total, up to 580) doesn't count as a failure. The turn finishes and you're told it wasn't checked.
 - Files the checks themselves write (coverage reports, caches) don't count as changes.
+- **It costs credits.** Each failure Claude fixes is extra work in your session, which is why `attempts` caps it and `/setup` recommends only the fast checks.
+- **Try it without Claude:** `python3 .claude/hooks/done_gate.py --check` runs the commands once and prints PASS, FAIL or TIMEOUT for each, with the total time. `/setup` runs it right after you turn the gate on, and asks what to do about a failing command instead of changing your code.
+
+#### Notices at session start
+
+These go to you as a message in the terminal. Claude never sees them, so they use no credits. They only show when a session starts or resumes, not after `/clear` or compaction.
+
+- **Setup reminder:** setup isn't finished, or (device installs) the project has no `CLAUDE.md`. Run `/setup`, or create `.claude/cct-ignore` to stop it in one project.
+- **Drift check:** a command in `CLAUDE.md` (the Commands table and the done checklist) or in `done_gate.commands` no longer fits the project: a `package.json` script, `Makefile` target, `justfile` recipe, file or folder that's gone, or a tool that isn't installed. It only reads files and never runs the commands. Shown when the list changes, and again after a week if nothing was fixed. Off with `"drift_check": false`.
+- **Missing tools** (from `format_file.py`): the project configures ruff, prettier, eslint, biome, golangci-lint and so on, but the tool isn't installed, so edits skip it.
+- **Update notice** (opt-in, script installs only): see [§11](#11-updating-customising-and-removing).
 
 Hooks need only `python3` and the standard library. They never download anything, never break a session on bad input, and only use tools already in your project (`node_modules/.bin`, `.venv/bin`) or on your `PATH`.
 
@@ -241,11 +252,14 @@ The guard reads commands the way a shell does. It understands quotes (so `git co
 |---|---|---|
 | `guard_level` | `"standard"` | `"off"`, `"standard"`, `"strict"` |
 | `format_on_edit` | `true` | Format files after Claude edits them |
-| `lint_on_edit` | `true` | Lint files after Claude edits them and send problems back to Claude |
+| `lint_on_edit` | `true` | Lint files after Claude edits them and send problems back to Claude. Its fixes use credits. |
+| `lint_max_repeats` | `3` | Stop reporting a file's lint problems to Claude after this many reports in a row in a session. `0`: no cap. |
 | `protect_lockfiles` | `true` | Ask before hand-editing lockfiles |
 | `protected_paths` | `[]` | Globs Claude must never edit, e.g. `["vendor/", "src/gen/**"]`. `dir/` covers a whole folder. |
-| `setup_reminder` | `true` | Session-start reminder when setup is pending |
-| `done_gate` | `{"commands": [], "timeout": 120, "attempts": 3}` | Commands that must pass before Claude finishes a turn that changed files. Empty turns it off. See [the done gate](#the-done-gate). |
+| `setup_reminder` | `true` | Session-start reminder when setup is pending (shown to you only) |
+| `drift_check` | `true` | Session-start notice when commands in `CLAUDE.md` or `done_gate` no longer match the project (shown to you only) |
+| `update_check` | `false` | Weekly check of the kit's latest GitHub release, with a notice when it's newer. Script installs only; set it in `~/.claude/cct.json`. |
+| `done_gate` | `{"commands": [], "timeout": 120, "attempts": 3}` | Commands that must pass before Claude finishes a turn that changed files. Empty turns it off. Uses credits when a check fails. See [the done gate](#the-done-gate). |
 
 To turn off the status line, remove `statusLine` from `settings.json` (or answer "No" during setup).
 
@@ -341,6 +355,10 @@ Whether installed by script or as the `cct` plugin, the kit works alongside othe
 
 Nothing is written before you confirm.
 
+**Updating without Claude** uses no credits: clone the kit and run `python3 <clone>/install.py --project . --update` (device: `--global --update`), with `--dry-run` first to preview. `/template-update` does the same steps and helps you merge conflicts.
+
+**Knowing when to update.** The kit never updates itself: its hooks run code on your machine on every tool call, so new code should only arrive when you choose it. If you said yes to the update notice in `/setup` (`"update_check": true` in `~/.claude/cct.json`), the session-start hook asks GitHub for the latest release at most once a week and shows you a one-line notice when it's newer. The request sends nothing about you or your project. **Plugin installs** update through `/plugin`, where you can also turn on auto-update for the marketplace.
+
 **Remove** with the installer:
 
 ```bash
@@ -384,13 +402,14 @@ GitHub pauses scheduled workflows in a public repository after 60 days without a
 | Symptom | Fix |
 |---|---|
 | `/setup` asks permission for every file in `.claude/` | That's Claude Code protecting its own config folder, and it happens even in auto-accept mode. Choose "allow for this session" at the first prompt. |
-| Claude never offers setup | Restart Claude Code after installing; hooks load at session start. Check that `.claude/cct-pending` exists and `python3` is on your `PATH`. Or just run `/setup`. |
+| No setup reminder appears | Restart Claude Code after installing; hooks load at session start. Check that `.claude/cct-pending` exists and `python3` is on your `PATH`. Or just run `/setup`. The reminder is a message to you; Claude doesn't bring it up itself. |
 | `/setup` or other skills don't appear | Restart Claude Code. Check the files are in `.claude/skills/` (project) or `~/.claude/skills/` (device). |
 | A hook error appears on every tool call | Run the hook by hand: `echo '{"tool_input":{"command":"ls"}}' \| python3 .claude/hooks/guard_bash.py`. The usual cause is `python3` missing. |
 | The guard blocks something you need | Run the command yourself in a terminal, or lower `guard_level` in `.claude/cct.json`. |
-| Files aren't formatted or linted | The hook only uses tools already installed in the project or on `PATH`, ESLint only runs when the project has an ESLint config, and Go and Rust files are only linted inside a `go.mod` or `Cargo.toml` project. A first `cargo clippy` run that has to build dependencies can exceed the hook's time limit and is skipped silently; later runs are fast. Install the tool, or turn the step off in `cct.json`. |
+| Files aren't formatted or linted | The hook only uses tools already installed in the project or on `PATH` (it tells you when a configured one is missing), ESLint only runs when the project has an ESLint config, and Go and Rust files are only linted inside a `go.mod` or `Cargo.toml` project. A first `cargo clippy` run that has to build dependencies can exceed the hook's time limit and is skipped silently; later runs are fast. Install the tool, or turn the step off in `cct.json`. |
 | Every turn ends with a long test run | The done gate runs after any turn with edits. Keep only fast checks in `done_gate.commands` (lint, unit tests) and leave slow ones to `/check` or CI. |
-| Claude keeps getting lint messages it can't fix | The linter's own config may disagree with the project. Fix the config, or set `lint_on_edit: false`. |
+| Claude keeps getting lint messages it can't fix | After 3 reports in a row for one file they stop (`lint_max_repeats`). The linter's own config may disagree with the project: fix the config, or set `lint_on_edit: false`. |
+| A drift notice names a command that's fine | The check only reads files, so a script generated at install time or a tool installed outside `PATH` looks missing. Fix `PATH`, or set `"drift_check": false`. |
 | An MCP server fails to connect | Check the env vars are set in the shell that starts Claude Code, run `/mcp` (some servers need a browser login there), and check the vendor docs. |
 | Setup is very slow with many confirmations | Another plugin may be adding a step per file (see [§10](#10-using-the-kit-with-other-plugins-eg-ecc)). |
 

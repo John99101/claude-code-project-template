@@ -3,7 +3,11 @@
 failures back so Claude keeps working.
 
 Configure in cct.json:  "done_gate": {"commands": ["npm test", "npm run lint"], "timeout": 120, "attempts": 3}
-An empty command list (the default) turns it off.
+An empty command list (the default) turns it off. Each block sends output to Claude, and its fix uses the user's
+credits, so /setup only turns this on when the user chooses it.
+
+`python3 done_gate.py --check` runs the commands once and prints pass or fail for each, without Claude: setup uses it
+to confirm the commands work, and users can run it any time.
 
 A turn counts as having changed files when format_file.py saw an Edit or Write (mark_edited), or when the git working
 tree differs from the last time this hook looked (session_start.py records the first look), which also catches edits
@@ -22,11 +26,13 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from cct_config import defer_to_project, home_claude, load_config, project_dir, read_input  # noqa: E402
+from cct_config import (defer_to_project, load_config, project_dir, prune_state, read_input,  # noqa: E402
+                        read_state, state_dir, write_state)
+from cct_config import state_path as _state_path  # noqa: E402
 
 MAX_LINES = 40
+CHECK_LINES = 15    # --check shows less: its output is read during /setup
 MAX_TIMEOUT = 580   # hooks.json gives this hook 600 s
-STALE_DAYS = 7
 
 
 def gate_config(cfg):
@@ -51,44 +57,8 @@ def gate_config(cfg):
 #   edited    an Edit or Write happened since the last block
 #   attempts  blocked stops in a row in this turn
 
-def state_dir():
-    return os.path.join(home_claude(), "cct-state")
-
-
 def state_path(session_id):
-    key = hashlib.sha256(f"{session_id}\0{os.path.abspath(project_dir())}".encode()).hexdigest()[:24]
-    return os.path.join(state_dir(), f"done-gate-{key}.json")
-
-
-def read_state(path):
-    try:
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
-
-
-def write_state(path, state):
-    try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(state, f)
-    except OSError:
-        pass
-
-
-def prune_stale(path):
-    """Every session leaves its state file behind."""
-    folder = os.path.dirname(path)
-    cutoff = time.time() - STALE_DAYS * 86400
-    try:
-        for name in os.listdir(folder):
-            full = os.path.join(folder, name)
-            if name.startswith("done-gate-") and os.path.getmtime(full) < cutoff:
-                os.remove(full)
-    except OSError:
-        pass
+    return _state_path("done-gate", session_id, os.path.abspath(project_dir()))
 
 
 def tree_fingerprint():
@@ -184,7 +154,7 @@ def main():
             state["tree"] = tree
             write_state(path, state)
         return
-    prune_stale(path)
+    prune_state()
     if not payload.get("stop_hook_active"):
         state["attempts"] = 0  # a new turn from the user gets a fresh budget
     changed_since_block = state.get("edited") or tree_changed
@@ -223,5 +193,42 @@ def main():
     finish()
 
 
+def check():
+    """`--check`: run the commands once, as the gate would, and report each. Exit 1 if any failed or timed out."""
+    commands, timeout, _ = gate_config(load_config())
+    if not commands:
+        print("No done_gate.commands set in .claude/cct.json, so the done gate is off.")
+        return 0
+    failed = False
+    start = time.monotonic()
+    deadline = start + timeout
+    for command in commands:
+        left = deadline - time.monotonic()
+        began = time.monotonic()
+        code, output = run(command, left) if left >= 1 else (None, "")
+        took = time.monotonic() - began
+        if code is None:
+            print(f"TIMEOUT  {command}  (the {timeout} s limit for all commands ran out)")
+            failed = True
+            break
+        if code == 0:
+            print(f"PASS     {command}  ({took:.1f} s)")
+            continue
+        failed = True
+        print(f"FAIL     {command}  (exit {code}, {took:.1f} s)")
+        lines = output.splitlines()
+        shown = lines[-CHECK_LINES:]
+        if len(lines) > CHECK_LINES:
+            print(f"         … {len(lines) - CHECK_LINES} earlier lines")
+        for line in shown:
+            print(f"         {line}")
+        break  # the gate stops at the first failure too
+    total = time.monotonic() - start
+    print(f"Total {total:.1f} s of a {timeout} s limit. These run after every turn in which Claude changed files.")
+    return 1 if failed else 0
+
+
 if __name__ == "__main__":
+    if "--check" in sys.argv[1:]:
+        sys.exit(check())
     main()

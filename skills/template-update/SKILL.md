@@ -22,3 +22,5 @@ Use `python3` on macOS and Linux. On Windows, use whichever of `python3`, `py -3
 4. Show the summary and ask before applying. Then run the same command without `--dry-run`.
 5. For each file in the "changed by you and by the kit" list, show `git diff --no-index <your file> <incoming copy>` and ask: keep mine, take the new one, or merge. Apply the choice, then delete the `incoming/` folder.
 6. Tell the user to restart Claude Code so changed hooks and skills load.
+
+Updating doesn't need Claude: steps 2–4 are plain commands the user can run in a terminal, which uses no credits. Mention this when they only want the update applied.
