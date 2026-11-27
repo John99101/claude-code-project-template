@@ -52,6 +52,6 @@ Topic rules in `.claude/rules/` load automatically; some load only when you work
 
 ## Tools for Claude
 
-- Commands: `/setup` re-tunes this config · `/check` runs lint and tests · `/review-changes` reviews the diff · `/commit` commits in house style · `/pr` opens a pull request · `/start-issue <n>` starts on an issue · `/handoff` saves progress for the next session · `/template-update` updates the kit
+- Commands: `/setup` re-tunes this config · `/check` runs lint and tests · `/review-changes` reviews the diff · `/commit` commits in house style · `/pr` opens a pull request · `/start-issue <n>` starts on an issue · `/handoff` saves progress for the next session · `/pin` pins a constraint for the task · `/template-update` updates the kit
 - Agents: `planner`, `reviewer`, `test-writer`, `security-auditor`
 - Personal, uncommitted notes: `CLAUDE.local.md` (see `CLAUDE.local.md.example`)

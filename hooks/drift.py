@@ -5,7 +5,7 @@ only, so a command it can't judge (shell variables, workspace filters, package-m
 result goes to the user only, never to Claude, so it uses no credits.
 
 Checked: the done_gate commands in cct.json, and the backticked commands in CLAUDE.md's "Commands" table and
-"Before you say a task is done" section. Turn off with cct.json "drift_check": false.
+"Before you say a task is done" section, including files CLAUDE.md imports with a line like `@AGENTS.md`. Turn off with cct.json "drift_check": false.
 """
 import json
 import os
@@ -226,17 +226,41 @@ def problem(command, proj, posix=None):
     return None
 
 
-def find_drift(cfg, proj):
-    """[(command, where it's written, why it drifted)]."""
+def md_sources(proj):
+    """[(path, display name)]: CLAUDE.md and the Markdown files it imports with `@file.md` lines."""
+    path, rel = claude_md(proj)
+    if not path:
+        agents = os.path.join(proj, "AGENTS.md")
+        return [(agents, "AGENTS.md")] if os.path.isfile(agents) else []
+    sources = [(path, rel)]
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            imports = re.findall(r"^\s*@(\.?/?[\w./-]+\.md)\s*$", f.read(), re.M)
+    except OSError:
+        imports = []
+    for imp in imports[:5]:
+        full = os.path.normpath(os.path.join(os.path.dirname(path), imp))
+        if os.path.isfile(full) and full.startswith(os.path.abspath(proj)):
+            sources.append((full, os.path.relpath(full, proj).replace(os.sep, "/")))
+    return sources
+
+
+def commands_to_check(cfg, proj):
+    """[(command, where it's written)] from done_gate and the Markdown instructions."""
     to_check = []
     gate = cfg.get("done_gate")
     if isinstance(gate, dict):
         for c in gate.get("commands") or []:
             if isinstance(c, str) and c.strip():
                 to_check.append((c.strip(), ".claude/cct.json done_gate"))
-    path, rel = claude_md(proj)
-    if path:
+    for path, rel in md_sources(proj):
         to_check += [(c, rel) for c in md_commands(path)]
+    return to_check
+
+
+def find_drift(cfg, proj):
+    """[(command, where it's written, why it drifted)]."""
+    to_check = commands_to_check(cfg, proj)
     seen, found = set(), []
     for command, where in to_check:
         if command in seen:

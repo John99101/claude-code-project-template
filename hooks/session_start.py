@@ -6,11 +6,16 @@
 - stale installs, missing .env keys, wrong runtime versions (env_check, env_check.py)
 - teammates changed the Claude config since the last session (team_notice, team_notice.py)
 - a handoff note from an earlier session is waiting (.claude-handoff.md, written by /handoff)
+- AGENTS.md and other tools' instruction files disagree, or CLAUDE.md doesn't import it (agent_files.py)
+- the shared config breaks on another platform the team uses (team_platforms, portability.py)
 - a newer kit release is out (update_check, update_check.py; off by default)
 
-Everything here goes to the user as a systemMessage, which Claude never sees, so it uses no credits. Nothing is
-printed when there is nothing to say, and nothing is shown after /clear or compaction. Each notice repeats at most
-weekly while nothing changes.
+Everything above goes to the user as a systemMessage, which Claude never sees, so it uses no credits. Nothing is
+printed when there is nothing to say, and notices aren't repeated after /clear or compaction. Each notice repeats at
+most weekly while nothing changes.
+
+The one thing that does go to Claude is the user's own pins (.claude-pins.md, written by /pin): they're added to its
+context at every session start and after every compaction, so a constraint survives the conversation being summarised.
 """
 import datetime
 import os
@@ -21,8 +26,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cct_config import (defer_to_project, home_claude, is_device_copy, load_config, notify, once,  # noqa: E402
                         project_dir, prune_state, read_input, setup_command)
 from done_gate import record_baseline  # noqa: E402
+import agent_files  # noqa: E402
 import drift  # noqa: E402
 import env_check  # noqa: E402
+import pins  # noqa: E402
+import portability  # noqa: E402
 import team_notice  # noqa: E402
 import update_check  # noqa: E402
 
@@ -120,10 +128,13 @@ def main():
     cfg = load_config()
     payload = read_input()
     record_baseline(payload, cfg)
-    if payload.get("source", "startup") not in ("startup", "resume"):
-        return  # /clear and compaction start a new context, not a new visit
-    prune_state()
     proj = project_dir()
+    pinned = safe(pins.read, proj)
+    context = pins.context(pinned) if pinned else None
+    if payload.get("source", "startup") not in ("startup", "resume"):
+        notify(context=context, event="SessionStart")  # /clear and compaction: only the pins come back
+        return
+    prune_state()
     messages = []
     pending = None
     if cfg.get("setup_reminder", True) and not is_template_source(proj):
@@ -139,8 +150,19 @@ def main():
         if cfg.get("team_notice", True):
             messages.append(safe(team_notice.notice, proj))
         messages.append(safe(handoff_notice, proj))
+        found = safe(agent_files.problems, proj, cfg)
+        script = os.path.relpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent_files.py"), proj)
+        script = "python3 " + (script if not script.startswith("..") else os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "agent_files.py")).replace(os.sep, "/")
+        messages.append(once("agents", os.path.abspath(proj), agent_files.message(found, script) if found else None))
+        found = safe(portability.find_problems, cfg, proj)
+        messages.append(once("portability", os.path.abspath(proj), portability.message(found) if found else None))
+    if pinned:
+        n = pins.count(pinned)
+        messages.append(f"[cct] {n} pin{'' if n == 1 else 's'} active from {pins.PINS_FILE}; Claude has "
+                        f"{'it' if n == 1 else 'them'}. /pin clear removes them.")
     messages.append(safe(update_check.notice, __file__, cfg))
-    notify(*messages)
+    notify(*messages, context=context, event="SessionStart")
 
 
 if __name__ == "__main__":

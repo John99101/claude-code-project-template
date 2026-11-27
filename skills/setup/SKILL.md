@@ -98,9 +98,11 @@ Show a short plan: each file to create or change, with the key values (commands,
 - `.claude/settings.json`: add `allow` entries for the exact detected safe commands (test, lint, format, type check, e.g. `Bash(npm run test:*)`). Set `"model"` only if the user chose one. Keep the `hooks` block. Remove `statusLine` if the user doesn't want the status line.
 - `.claude/cct.json`: `guard_level`, `format_on_edit`, `lint_on_edit` (keep `lint_max_repeats` at 3 unless asked), `protect_lockfiles`, `protected_paths` (a list of project-relative globs, folders as `dir/`) and `done_gate.commands` (the exact commands, fastest first; leave the list empty for No) from the answers.
 - `~/.claude/cct.json`: `update_check` from the update-notice answer (personal, so it goes here, not into the shared project file). Merge it into the file; don't drop other keys.
+- **Other AI tools** (answer to `ai_tools`): if the team uses any, move the shared content (overview, stack, commands, architecture, conventions, done checklist, working agreements) into `AGENTS.md`, keep in `CLAUDE.md` only a first line `@AGENTS.md` plus the Claude-specific parts ("Tools for Claude"), set `agent_files` in `.claude/cct.json` to the chosen targets (`copilot`, `cursor`, `gemini`; Codex reads `AGENTS.md` itself), and run `python3 <hooks>/agent_files.py --write`. If the repo already has an `AGENTS.md` and no `CLAUDE.md`, do this without asking: Claude Code doesn't read `AGENTS.md` on its own. Offer a CI step that runs `agent_files.py --check`.
+- **Platforms** (answer to `team_platforms`): write the list to `.claude/cct.json`. With Windows in a mixed team, write commands in `CLAUDE.md` and `done_gate` that work in every shell (package scripts, `python -m …`, no POSIX-only `rm`, `export` or `FOO=1 cmd`), and if the repo has `*.sh` files, add `*.sh text eol=lf` to `.gitattributes`.
 - `.mcp.json`: add the chosen servers from [mcp-catalog.json](mcp-catalog.json), copying only each entry's `config` object under `mcpServers.<name>`. The catalog is checked weekly, but if unsure, check the vendor's docs. List every env var the user must set.
 - `.claude/agents/*.md`: set `model:` per the user's answers. Remove agents they don't want.
-- `.gitignore`: make sure `.claude/settings.local.json`, `CLAUDE.local.md`, `.claude-handoff.md`, `.env` and `.env.*` (but not `.env.example`) are ignored.
+- `.gitignore`: make sure `.claude/settings.local.json`, `CLAUDE.local.md`, `.claude-handoff.md`, `.claude-pins.md`, `.env` and `.env.*` (but not `.env.example`) are ignored.
 
 ### 5b. Monorepos
 

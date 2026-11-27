@@ -7,6 +7,8 @@ still has problems after "lint_max_repeats" reports in a row (default 3) stops b
 session, and the user is told. Formatting sends nothing to Claude.
 When the project configures a formatter or linter that isn't installed, the user (not Claude) is told once per
 session, so the step isn't skipped silently.
+It also points Claude to imports this edit added that no manifest declares (often made-up packages), and to new
+functions that already exist elsewhere in the repo (code_hints.py). Each is reported once per session.
 Turn off with cct.json "format_on_edit": false / "lint_on_edit": false.
 """
 import os
@@ -19,6 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cct_config import (defer_to_project, load_config, notify, project_dir, read_input, read_state,  # noqa: E402
                         state_path, write_state)
 from done_gate import mark_edited  # noqa: E402
+import code_hints  # noqa: E402
 
 PRETTIER_EXT = {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".json", ".css", ".scss",
                 ".less", ".html", ".vue", ".svelte", ".yaml", ".yml", ".graphql"}
@@ -351,6 +354,47 @@ def run(cmd, cwd=None, timeout=30):
         return None
 
 
+def first_time(payload, kind, keys):
+    """The keys not reported yet in this session, which are then marked as reported."""
+    path = state_path(kind, payload.get("session_id") or "", os.path.abspath(project_dir()))
+    state = read_state(path)
+    told = set(state.get("told") or [])
+    new = [k for k in keys if k not in told]
+    if new:
+        write_state(path, {"told": sorted(told | set(new))})
+    return new
+
+
+def code_feedback(payload, path, cfg):
+    """Messages for Claude about undeclared imports and duplicated functions this edit added."""
+    want_imports, want_dupes = cfg.get("dependency_check", True), cfg.get("duplicate_hints", True)
+    if not (want_imports or want_dupes) or not code_hints.lang(path):
+        return []
+    proj = project_dir()
+    new, old = code_hints.edit_texts(payload, path, proj)
+    if not new:
+        return []
+    rel = os.path.relpath(path, proj).replace(os.sep, "/")
+    out = []
+    if want_imports:
+        found = code_hints.undeclared_imports(path, new, old, proj)
+        keys = first_time(payload, "imports-told", [name for name, _ in found])
+        for name, manifest in found:
+            if name in keys:
+                out.append(f"cct: {rel} imports `{name}`, which isn't declared in {manifest}. If it's a real package, "
+                           f"add it with the package manager (the install is checked against the registry); if the "
+                           f"name might be made up, fix the import.")
+    if want_dupes:
+        found = code_hints.duplicates(path, new, old, proj)
+        keys = first_time(payload, "dupes-told", [name for name, _ in found])
+        for name, hits in found:
+            if name in keys:
+                out.append(f"cct: `{name}` is new in {rel}, but {', '.join(hits)} already define"
+                           f"{'s' if len(hits) == 1 else ''} it or a near-same name. Reuse it unless it does "
+                           f"something different, and say why if so.")
+    return out
+
+
 def main():
     if defer_to_project(__file__):
         return
@@ -367,6 +411,7 @@ def main():
             run(cmd)
 
     capped = None
+    feedback = code_feedback(payload, path, cfg)
     if cfg.get("lint_on_edit", True):
         lint = linter_for(path)
         result = run(lint.cmd, lint.cwd, LINT_TIMEOUT if lint.file_only else 30) if lint else None
@@ -386,9 +431,11 @@ def main():
                 name += " " + lint.cmd[1]
             last = (f" This is report {n} of {limit} for this file; after it, problems here aren't sent back. If they "
                     f"aren't yours to fix, leave them and tell the user." if limit and n == limit else "")
-            print(f"cct lint: {name} found problems in {rel}. Fix them before moving on.{last}\n"
-                  + "\n".join(shown), file=sys.stderr)
-            sys.exit(2)  # stdout is ignored with exit 2, so a missing-tool notice waits for the next edit
+            feedback.insert(0, f"cct lint: {name} found problems in {rel}. Fix them before moving on.{last}\n"
+                               + "\n".join(shown))
+    if feedback:
+        print("\n\n".join(feedback), file=sys.stderr)
+        sys.exit(2)  # stdout is ignored with exit 2, so a missing-tool notice waits for the next edit
 
     notify(capped, missing_tools_notice(payload, path, cfg))
 

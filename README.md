@@ -37,6 +37,12 @@ Claude Code can learn all of this through `CLAUDE.md`, rules, settings, hooks, s
 | "Done!" … and the tests fail | The **done gate** runs your checks before Claude finishes, and only the tests related to the change |
 | Lint errors show up in CI an hour later | Every edited file is **formatted and linted**, and problems go straight back to Claude |
 | One `rm -rf` or force-push away from a bad day | A **guard** blocks destructive commands and secret-file edits, and asks before risky ones |
+| Claude installs a package whose name it made up | The **dependency check** blocks names that don't exist on npm, PyPI or crates.io, and asks before brand-new ones |
+| "All tests pass!" … but nothing ran | The **claim check** sends Claude back when it claims a check it never ran |
+| "Don't touch the API" is forgotten after compaction | **`/pin`** keeps it in Claude's context and the guard enforces path pins |
+| Claude rewrites a helper you already have | **Duplicate hints** point it to the existing function |
+| Cursor, Copilot and Claude follow different instructions | **One `AGENTS.md`** feeds every tool; generated copies can't drift |
+| Commands and hooks break for the Windows half of the team | The **portability check** flags POSIX-only commands, backslash paths and CRLF scripts |
 | A teammate changes the rules and nobody notices | **Session notices** flag teammates' config changes, stale installs, missing `.env` keys and outdated commands |
 | Every new repo starts from zero | Your answers are **remembered**, so the next project only asks what's new |
 
@@ -122,8 +128,9 @@ Quick setup asks about ten questions; Thorough asks about 25. Monorepos get a sh
 | `/check` | Lint, type check and tests, then fixes what recent changes broke |
 | `/review-changes` | Reviews your diff with a reviewer agent (and a security auditor when it matters) |
 | `/commit` | Commits in your project's message style |
-| `/pr` | Pushes and opens a pull request from your template, with a test plan that ticks only the checks that really ran |
+| `/pr` | Opens a review-ready pull request: suggests a split when it's too big, ticks only checks that really ran, and tells the reviewer its assumptions, what's untested and where to look first |
 | `/handoff` | Saves where a task stands, so tomorrow's session (`/handoff resume`) picks up exactly there |
+| `/pin` | Pins a constraint for the task ("don't change the public API", `only edit: src/billing/**`). It survives compaction, and path pins are enforced |
 | `/setup` | Re-tunes anything later: "make the guard strict", "add a rule for our GraphQL conventions" |
 
 Claude also picks up `write-tests`, `debug-issue`, `release-notes` and `remember-preference` by itself when they fit, and has four specialist agents: planner, reviewer, security auditor and test writer.
@@ -133,6 +140,9 @@ Claude also picks up `write-tests`, `debug-issue`, `release-notes` and `remember
 - **Guard:** blocks `rm -rf ~`, `curl … | sh`, force-pushes to `main` and writes to `.env` or keys, even when they're hidden in `sh -c`, `eval` or `$(…)`. It asks before `git reset --hard`, `sudo`, `DROP TABLE` and publishing.
 - **Format and lint on every edit** with the tools your project already has (prettier, biome, eslint, ruff, black, gofmt, golangci-lint, rustfmt, clippy, shellcheck). It never downloads anything.
 - **Done gate:** your checks run before Claude finishes a turn that changed files; a failure sends Claude back to fix it.
+- **Dependency check:** before an install, every package is looked up in its registry. Names that don't exist are blocked (AI models invent package names, and attackers register them); packages under 30 days old or barely downloaded need your OK. New imports that no manifest declares are pointed out too.
+- **Claim check:** if Claude's final reply says "tests pass" or "verified" but no check ran in that turn, it's sent back to run it or correct the claim.
+- **Duplicate hints:** a new function that already exists elsewhere (`formatDate` / `format_date`) is pointed out, so Claude reuses it.
 - **Status line:** `Opus · my-app (main) · $0.42 · guard standard · setup done`.
 
 **Session notices.** At session start you see what needs attention before Claude touches anything:
@@ -146,7 +156,7 @@ Claude also picks up `write-tests`, `debug-issue`, `release-notes` and `remember
 [cct] There's a handoff note from 2026-11-27 18:05 in .claude-handoff.md. Run /handoff resume to pick up where you left off.
 ```
 
-It also flags commands in `CLAUDE.md` that no longer exist, and linters your project configures but you haven't installed.
+It also flags commands in `CLAUDE.md` that no longer exist, linters your project configures but you haven't installed, instruction files for other AI tools that disagree with `AGENTS.md`, and, for teams with Windows, commands, hooks and scripts that won't work there.
 
 ## A day with the kit
 

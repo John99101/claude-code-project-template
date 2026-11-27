@@ -5,13 +5,17 @@ Event-driven scripts registered in `.claude/settings.json`. They need `python3` 
 | Script | Event | What it does |
 |---|---|---|
 | `session_start.py` | `SessionStart` | Tells **you** (not Claude, so no credits) when setup is unfinished, when commands in `CLAUDE.md` or `done_gate` no longer match the project (`drift.py`), when installs are stale, `.env` keys are missing or runtime versions are wrong (`env_check.py`), when teammates changed the Claude config (`team_notice.py`), when a `/handoff` note is waiting, and, if you turned on `update_check`, when a newer kit release is out (`update_check.py`). Quiet after `/clear` and compaction. |
+| `deps_guard.py` | `PreToolUse` · `Bash\|PowerShell` | Looks up the packages an install would add on npm, PyPI or crates.io: blocks names that don't exist, asks before brand-new or barely used ones. Offline, it lets the install through. |
 | `guard_bash.py` | `PreToolUse` · `Bash\|PowerShell` | Blocks destructive commands (`rm -rf /`, `find / -delete`, `mkfs`, force-push or deleting `main`, `curl … \| sh`), including when they're hidden in `sh -c`, `eval`, `$(…)` or backticks. Asks before risky ones (`rm -r`, `git reset --hard`, `sudo`, `DROP TABLE`, publishing). |
-| `protect_files.py` | `PreToolUse` · `Edit\|Write` | Blocks writes to `.env`, keys, `secrets/`, `.git/` and your `protected_paths`. Asks before editing lockfiles or CI workflows. |
+| `protect_files.py` | `PreToolUse` · `Edit\|Write` | Blocks writes to `.env`, keys, `secrets/`, `.git/`, your `protected_paths` and paths your `/pin`s rule out. Asks before editing lockfiles or CI workflows. |
 | `format_file.py` | `PostToolUse` · `Edit\|Write` | Formats the edited file with the project's formatter (prettier, biome, ruff, black, gofmt, rustfmt, shfmt), then lints it (eslint, biome, ruff, shellcheck, golangci-lint or go vet, cargo clippy) and **sends problems back to Claude** to fix right away. Go and Rust linters check the whole package or crate, but only problems in the edited file are reported. A file that still has problems after `lint_max_repeats` reports in a row (default 3) stops being reported for the session, and you're told. When the project configures a tool that isn't installed, tells you once per session. Never downloads anything. |
+| `claim_check.py` | `Stop` | Sends Claude back once when its final reply claims tests pass or something was verified, but no check ran in that turn. |
 | `done_gate.py` | `Stop` | Off until `done_gate.commands` is set in `cct.json`. A command may use `{files}` for the changed files, to run only related tests. `python3 done_gate.py --check` runs the commands once and reports each, without Claude. When Claude finishes a turn that changed files (Edit/Write, or any git working-tree change, so shell edits count too), runs those commands and **blocks finishing** while one fails, sending the output tail back. Lets Claude finish when it changes nothing after being blocked, after `attempts` tries, or when the commands exceed `timeout`. |
 | `statusline.py` | `statusLine` | Shows `model · folder (branch) · session cost · guard level · setup state`. |
 | `cct_config.py` | — | Shared helper: loads `cct.json`, user-only notices, state files, and makes device-wide hooks step aside when the project has its own copy. |
-| `drift.py`, `env_check.py`, `team_notice.py`, `update_check.py` | — | Helpers for `session_start.py`. |
+| `drift.py`, `env_check.py`, `team_notice.py`, `update_check.py`, `portability.py`, `pins.py` | — | Helpers for `session_start.py` (and `pins.py` for `protect_files.py`). |
+| `code_hints.py` | — | Helper for `format_file.py`: undeclared imports and duplicate functions in an edit. |
+| `agent_files.py` | — | Generates other AI tools' instruction files from `AGENTS.md`; `--check` for CI, `--write` to update. |
 
 ## Tuning
 
@@ -30,6 +34,13 @@ Change behaviour in `.claude/cct.json` (project) or `~/.claude/cct.json` (all pr
   "env_check": true,
   "team_notice": true,
   "statusline_cost": true,
+  "dependency_check": true,
+  "dependency_min_age_days": 30,
+  "claim_check": true,
+  "duplicate_hints": true,
+  "agent_files": [],
+  "team_platforms": [],
+  "pr_max_lines": 400,
   "update_check": false
 }
 ```

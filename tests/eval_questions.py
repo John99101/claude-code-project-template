@@ -34,7 +34,7 @@ PROMPT = (
 
 FILLER = re.compile(r"no saved preference|currently not set|not set in|asking because|no preference", re.I)
 NEED_PREVIEW = {"Guard", "Commits", "Agents", "Statusline"}
-ALWAYS = {"Depth", "Guard", "Never edit", "Done when"}
+ALWAYS = {"Depth", "Guard", "Never edit", "Done when", "AI tools", "Platforms"}
 THOROUGH_ONLY = {"Level", "Ask first", "Commits", "Model", "Agents", "Plan first", "Format", "Lint", "Lockfiles",
                  "Statusline", "Conventions", "Branches", "Versions", "Deploy", "Docs"}
 THOROUGH_REQUIRED = {"Lockfiles", "Deploy", "Versions", "Plan first"}

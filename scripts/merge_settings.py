@@ -20,8 +20,8 @@ import shutil
 import sys
 import time
 
-KIT_SCRIPTS = ("session_start.py", "guard_bash.py", "protect_files.py", "format_file.py", "done_gate.py",
-               "statusline.py")
+KIT_SCRIPTS = ("session_start.py", "guard_bash.py", "deps_guard.py", "protect_files.py", "format_file.py",
+               "done_gate.py", "claim_check.py", "statusline.py")
 KIT_DIRS = (".claude/hooks/", "hooks/cct/", "statusline/")
 
 

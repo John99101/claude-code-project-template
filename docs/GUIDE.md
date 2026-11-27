@@ -98,6 +98,7 @@ Tested rules for **Python, TypeScript/JavaScript, Go, Rust and Java/Kotlin**: id
 | `/start-issue <n>` | Reads a GitHub or GitLab issue, creates a branch named in house style, finds the code involved and shows a plan. Waits for your OK before editing. |
 | `/commit` | Shows live status and recent log, writes a message in the project's style, commits. Never pushes. |
 | `/pr` | Pushes the branch and opens a pull request (GitLab: merge request) using the repo's PR template: summary, linked issues, and a test plan that ticks only the checks that actually ran. Shows the draft first. Never merges. |
+| `/pin` | Pins a constraint for the current task in `.claude-pins.md` (gitignored): free text like "don't change the public API", or `never edit: <globs>` / `only edit: <globs>`. Pins go back into Claude's context at every session start and after compaction, and the file guard blocks edits that break a path pin. `/pin list`, `/pin remove <n>`, `/pin clear`. |
 | `/handoff` | Writes `.claude-handoff.md`: goal, what's done, what's in progress, decisions, open questions, next steps. The next session shows a notice; `/handoff resume` picks it up. The file is personal and gitignored. |
 | `/template-update` | Updates the kit from GitHub, keeping your customisations (see [§11](#11-updating-customising-and-removing)). |
 
@@ -129,9 +130,11 @@ Agents run in a **separate context window**, so a long exploration or review doe
 | Hook | Event | Purpose |
 |---|---|---|
 | `session_start.py` | Session start | Tells **you** when setup is unfinished, when commands have drifted (see [notices](#notices-at-session-start)), and, if you opted in, when a new kit version is out. Claude never sees these, so they cost nothing. Silent otherwise. |
+| `deps_guard.py` | Before every shell command | Looks up each package an install would add (npm, pnpm, yarn, bun, pip, uv, poetry, pdm, cargo) in its registry. Blocks names that don't exist; asks before packages younger than `dependency_min_age_days` (30) or barely downloaded. See [made-up packages](#made-up-packages). |
 | `guard_bash.py` | Before every shell command | Blocks destructive commands, asks before risky ones (see [§7](#7-the-safety-model)) |
 | `protect_files.py` | Before every file edit | Blocks edits to secrets and git internals; asks before lockfiles and CI |
 | `format_file.py` | After every file edit | Formats the file with *your project's* formatter, then lints it. **Lint problems go straight back to Claude**, which fixes them before moving on instead of finding them later at `/check`. To keep credits in check, a file that still has problems after `lint_max_repeats` reports in a row (default 3) isn't reported again in that session, and you're told. If the project configures a formatter or linter that isn't installed, you're told once per session instead of the step being skipped silently. |
+| `claim_check.py` | When Claude finishes a turn | If the final reply claims tests pass, a build works or something was verified, but no test, lint, build or type-check command ran in that turn, sends Claude back once to run it or correct the claim. |
 | `done_gate.py` | When Claude finishes a turn | Off until `done_gate.commands` is set. If Claude changed files in the turn, runs those commands (your done checklist) and **sends a failure back to Claude**, which keeps working instead of saying it's done. See [the done gate](#the-done-gate) below. |
 | `statusline.py` | Status line | `Opus · my-app (main) · $0.42 · guard standard · setup done`. The cost is Claude Code's own estimate for the session; hide it with `"statusline_cost": false`. |
 
@@ -153,6 +156,19 @@ Agents run in a **separate context window**, so a long exploration or review doe
 - **Only related tests:** a command may contain `{files}`, which the gate fills with the changed files, e.g. `npx vitest related --run {files}` or `npx jest --findRelatedTests --passWithNoTests {files}`. It needs git; with no changed files the command is skipped. Faster turns, and fewer failures that have nothing to do with the change.
 - **Try it without Claude:** `python3 .claude/hooks/done_gate.py --check` runs the commands once and prints PASS, FAIL or TIMEOUT for each, with the total time. `/setup` runs it right after you turn the gate on, and asks what to do about a failing command instead of changing your code.
 
+#### Made-up packages
+
+Models sometimes invent package names that sound right, and the same invented names come back again and again, so attackers register them with malicious code ("slopsquatting"). Two checks catch them:
+
+- **Before an install** (`deps_guard.py`): each package is looked up on npm, PyPI or crates.io. One that doesn't exist is blocked. One that's younger than `dependency_min_age_days` or has very few downloads needs your OK, with the facts shown. Private registries (`--registry`, `--index-url`), paths and git URLs aren't checked, a lookup that fails lets the install through, and results are cached for a day. The lookup sends only the package name, with a generic User-Agent.
+- **After an edit** (`format_file.py`): imports this edit added that no `package.json`, `pyproject.toml` or `requirements*.txt` declares are pointed out to Claude, so a made-up import is caught even when nothing gets installed.
+
+Both are on by default; `"dependency_check": false` turns them off.
+
+#### Pins
+
+Constraints you give mid-task ("only touch the billing module", "don't change the public API") get lost when a long conversation is compacted. `/pin` writes them to `.claude-pins.md`. The session-start hook adds them to Claude's context at every start and after every compaction (the only text the kit adds to Claude's context on its own, and only what you pinned), and `protect_files.py` blocks edits that break a `never edit:` or `only edit:` pin.
+
 #### Notices at session start
 
 These go to you as a message in the terminal. Claude never sees them, so they use no credits. They only show when a session starts or resumes, not after `/clear` or compaction.
@@ -162,6 +178,8 @@ These go to you as a message in the terminal. Claude never sees them, so they us
 - **Environment check:** the lockfile changed since the last install (`node_modules`, `.venv`) or nothing is installed yet; `.env` is missing or lacks keys that `.env.example` lists (only key names are read, never values); or `node`/`python` doesn't match `.nvmrc`, `.node-version`, `engines` or `.python-version`. Off with `"env_check": false`.
 - **Team changes:** commits by others since your last session changed `CLAUDE.md`, `.claude/` or `.mcp.json`. It names the files and authors and gives the `git diff` command to see them. Off with `"team_notice": false`.
 - **Handoff:** a `.claude-handoff.md` from `/handoff` is waiting. Run `/handoff resume`.
+- **AI tools disagree:** `AGENTS.md` exists but `CLAUDE.md` doesn't import it (Claude Code doesn't read `AGENTS.md` on its own), or the generated Copilot, Cursor or Gemini files are out of date. See [one file for every AI tool](#one-file-for-every-ai-tool).
+- **Portability** (when `team_platforms` includes `windows`): commands in `CLAUDE.md`, `AGENTS.md` or `done_gate` that only work in POSIX shells (`rm -rf`, `cp`, `export`, `FOO=1 cmd`, `./x.sh`), hooks in `settings.json` with backslashes or one machine's absolute paths, and shell scripts with CRLF line endings or no `.gitattributes` rule keeping them LF.
 - **Missing tools** (from `format_file.py`): the project configures ruff, prettier, eslint, biome, golangci-lint and so on, but the tool isn't installed, so edits skip it.
 - **Update notice** (opt-in, script installs only): see [§11](#11-updating-customising-and-removing).
 
@@ -235,6 +253,22 @@ Setup recognises pnpm, npm and yarn workspaces, Nx, Turborepo, Lerna, Cargo work
 
 The next project only gets asked project-specific questions.
 
+#### One file for every AI tool
+
+Teams that mix Claude Code with Cursor, Copilot, Codex or Gemini end up with one instructions file per tool, and they drift apart. When setup learns the team uses other tools, it makes `AGENTS.md` the shared source: `CLAUDE.md` keeps a first line `@AGENTS.md` plus Claude-specific parts, and the files listed in `agent_files` are generated from it:
+
+| `agent_files` value | File |
+|---|---|
+| `copilot` | `.github/copilot-instructions.md` |
+| `cursor` | `.cursor/rules/agents.mdc` |
+| `gemini` | `GEMINI.md` |
+
+Codex reads `AGENTS.md` itself. Regenerate the copies with `python3 .claude/hooks/agent_files.py --write`, and add `python3 .claude/hooks/agent_files.py --check` to CI to fail a PR that changes one without the other.
+
+#### Duplicate hints
+
+When an edit adds a function (Python, JS/TS, Go, Rust), `format_file.py` searches the repo with `git grep` for one with the same name, in any casing (`formatDate`, `format_date`, `FormatDate`), and tells Claude where it is. Short or generic names (`render`, `handler`, `main`), tests and vendored code are skipped, and each name is reported once per session. `"duplicate_hints": false` turns it off.
+
 ## 7. The safety model
 
 The guard sorts shell commands and file edits into three outcomes:
@@ -268,6 +302,13 @@ The guard reads commands the way a shell does. It understands quotes (so `git co
 | `env_check` | `true` | Session-start notice for stale installs, missing `.env` keys and wrong runtime versions (shown to you only) |
 | `team_notice` | `true` | Session-start notice when teammates changed `CLAUDE.md`, `.claude/` or `.mcp.json` (shown to you only) |
 | `statusline_cost` | `true` | Show the session's cost in the status line |
+| `dependency_check` | `true` | Look packages up before installs, and point out undeclared imports. See [made-up packages](#made-up-packages). |
+| `dependency_min_age_days` | `30` | Packages younger than this need your OK |
+| `claim_check` | `true` | Send Claude back when it claims a check it didn't run |
+| `duplicate_hints` | `true` | Point out new functions that already exist elsewhere |
+| `agent_files` | `[]` | Instruction files generated from `AGENTS.md`: `copilot`, `cursor`, `gemini` |
+| `team_platforms` | `[]` | Systems the team uses, e.g. `["linux", "windows"]`. With `windows`, the portability check runs. |
+| `pr_max_lines` | `400` | `/pr` suggests splitting a bigger diff |
 | `update_check` | `false` | Weekly check of the kit's latest GitHub release, with a notice when it's newer. Script installs only; set it in `~/.claude/cct.json`. |
 | `done_gate` | `{"commands": [], "timeout": 120, "attempts": 3}` | Commands that must pass before Claude finishes a turn that changed files. Empty turns it off. Uses credits when a check fails. See [the done gate](#the-done-gate). |
 
@@ -278,6 +319,7 @@ To turn off the status line, remove `statusLine` from `settings.json` (or answer
 | File | Purpose |
 |---|---|
 | `.claude/cct-pending` | Marker: setup not finished. Deleted by setup. |
+| `.claude-pins.md` | Your pins for the current task (`/pin`), gitignored |
 | `.claude/cct-ignore` | Device installs: don't offer setup in this project |
 | `.claude/cct/source.json` | Kit repo, version, commit and install date |
 | `.claude/cct/manifest.txt` | SHA-256 of every file as installed, used by `/template-update` and `--uninstall` |

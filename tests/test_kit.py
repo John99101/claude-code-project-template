@@ -906,6 +906,292 @@ class HandoffNoticeTest(TempDirCase):
         self.assertEqual(self.notice("session_start.py", {"source": "startup"}), "")
 
 
+class DepsGuardTest(TempDirCase):
+    def setUp(self):
+        super().setUp()
+        self.env["CCT_REGISTRY_BASE"] = "file:" + urllib.request.pathname2url(self.p("registry"))
+
+    def publish(self, kind, name, doc):
+        self.touch(f"registry/{kind}/{name}.json", json.dumps(doc))
+
+    def days_ago(self, n):
+        import datetime
+        return (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=n)).isoformat()
+
+    def npm(self, name, age, weekly):
+        self.publish("npm", name, {"name": name, "time": {"created": self.days_ago(age)}})
+        self.publish("npm-downloads", name, {"downloads": weekly})
+
+    def run_cmd(self, command):
+        out = self.hook("deps_guard.py", {"tool_input": {"command": command}})
+        if not out:
+            return "allow", ""
+        data = json.loads(out)["hookSpecificOutput"]
+        return data["permissionDecision"], data["permissionDecisionReason"]
+
+    def test_made_up_package_is_blocked(self):
+        self.npm("react", 4000, 9000000)
+        decision, reason = self.run_cmd("npm install react react-codeshift")
+        self.assertEqual(decision, "deny")
+        self.assertIn("`react-codeshift` doesn't exist on npm", reason)
+
+    def test_established_package_passes(self):
+        self.npm("lodash", 4000, 5000000)
+        self.assertEqual(self.run_cmd("pnpm add lodash@^4 -D")[0], "allow")
+
+    def test_brand_new_package_asks_with_facts(self):
+        self.npm("left-padd", 5, 12)
+        decision, reason = self.run_cmd("yarn add left-padd")
+        self.assertEqual(decision, "ask")
+        self.assertIn("first published 5 days ago", reason)
+        self.assertIn("12 downloads last week", reason)
+
+    def test_python_and_rust_installs(self):
+        self.publish("pypi", "requests", {"releases": {"1.0": [{"upload_time_iso_8601": self.days_ago(4000)}]}})
+        self.publish("crates", "serde", {"crate": {"created_at": self.days_ago(3000), "recent_downloads": 9000000}})
+        self.publish("crates", "serde-fresh", {"crate": {"created_at": self.days_ago(2), "recent_downloads": 3}})
+        self.assertEqual(self.run_cmd("pip install 'requests[socks]>=2' && cargo add serde -F derive")[0], "allow")
+        self.assertEqual(self.run_cmd("uv add made-up-thing")[0], "deny")
+        self.assertEqual(self.run_cmd("python -m pip install Made_Up.Thing")[0], "deny", "names are normalised")
+        self.assertEqual(self.run_cmd("cargo add serde-fresh")[0], "ask")
+
+    def test_not_checked(self):
+        for command in ("npm install", "pip install -r requirements.txt", "npm install --registry https://npm.corp x",
+                        "pip install ./local-pkg", "npx create-thing", "uv sync", "npm i github:user/repo"):
+            with self.subTest(command):
+                self.assertEqual(self.run_cmd(command)[0], "allow")
+
+    def test_offline_lets_the_install_through(self):
+        self.env["CCT_REGISTRY_BASE"] = "http://127.0.0.1:9"
+        self.assertEqual(self.run_cmd("npm install anything")[0], "allow")
+
+    def test_results_are_cached_and_it_can_be_disabled(self):
+        self.assertEqual(self.run_cmd("npm install ghost-pkg")[0], "deny")
+        self.publish("npm", "ghost-pkg", {"time": {"created": self.days_ago(999)}})
+        self.assertEqual(self.run_cmd("npm install ghost-pkg")[0], "deny", "cached for a day")
+        self.write_cct(dependency_check=False)
+        self.assertEqual(self.run_cmd("npm install ghost-pkg2")[0], "allow")
+
+    def test_npm_spec_names(self):
+        sys.path.insert(0, HOOKS)
+        try:
+            import deps_guard
+        finally:
+            sys.path.remove(HOOKS)
+        cases = {"@scope/pkg@^1.2": "@scope/pkg", "pkg@latest": "pkg", "alias@npm:real@1": "real",
+                 "github:user/repo": None, "user/repo": None, "./local": None, "file:../x": None}
+        for spec, name in cases.items():
+            self.assertEqual(deps_guard.npm_name(spec), name, spec)
+
+
+class ClaimCheckTest(TempDirCase):
+    def transcript(self, *entries):
+        path = self.p("transcript.jsonl")
+        with open(path, "w") as f:
+            for e in entries:
+                f.write(json.dumps(e) + "\n")
+        return path
+
+    @staticmethod
+    def user(text):
+        return {"type": "user", "message": {"role": "user", "content": text}}
+
+    @staticmethod
+    def said(text):
+        return {"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": text}]}}
+
+    @staticmethod
+    def ran(command):
+        return {"type": "assistant", "message": {"role": "assistant", "content": [
+            {"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": command}}]}}
+
+    @staticmethod
+    def result():
+        return {"type": "user", "message": {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "t1", "content": "ok"}]}}
+
+    def stop(self, *entries, active=False):
+        out = self.hook("claim_check.py", {"transcript_path": self.transcript(*entries), "stop_hook_active": active})
+        return json.loads(out) if out else {}
+
+    def test_unbacked_claim_is_sent_back(self):
+        r = self.stop(self.user("fix the bug"), self.said("Fixed the off-by-one. All tests pass."))
+        self.assertEqual(r["decision"], "block")
+        self.assertIn("All tests pass", r["reason"])
+
+    def test_claim_after_running_tests_is_fine(self):
+        self.assertEqual(self.stop(self.user("fix it"), self.ran("uv run pytest -q"), self.result(),
+                                   self.said("Fixed. All tests pass.")), {})
+
+    def test_earlier_turns_dont_count(self):
+        r = self.stop(self.user("run tests"), self.ran("npm test"), self.result(), self.said("Done."),
+                      self.user("now rename it"), self.said("Renamed it, and the build is green."))
+        self.assertEqual(r["decision"], "block")
+
+    def test_hedged_or_no_claims_pass(self):
+        for text in ("Run `pytest` to make sure the tests pass.", "I haven't verified that the tests pass.",
+                     "Renamed the function in three files."):
+            with self.subTest(text):
+                self.assertEqual(self.stop(self.user("x"), self.said(text)), {})
+
+    def test_once_per_turn_and_switch(self):
+        entries = (self.user("x"), self.said("All tests pass."))
+        self.assertEqual(self.stop(*entries, active=True), {})
+        self.write_cct(claim_check=False)
+        self.assertEqual(self.stop(*entries), {})
+
+
+class PinsTest(TempDirCase):
+    PINS = "# Pinned for this task\n- never edit: src/api/**\n- only edit: src/\n- Don't change the public API.\n"
+
+    def decide_for(self, rel):
+        return self.decision("protect_files.py", {"tool_input": {"file_path": self.p(*rel.split("/"))}})
+
+    def test_path_pins_are_enforced(self):
+        self.touch(".claude-pins.md", self.PINS)
+        self.assertEqual(self.decide_for("src/api/routes.py"), "deny")
+        self.assertEqual(self.decide_for("docs/guide.md"), "deny", "outside the only-edit area")
+        self.assertEqual(self.decide_for("src/billing/invoice.py"), "allow")
+        self.assertEqual(self.decide_for(".claude-pins.md"), "allow", "the pins file stays editable")
+
+    def test_without_pins_nothing_changes(self):
+        self.assertEqual(self.decide_for("docs/guide.md"), "allow")
+
+    def test_pins_reach_claude_at_start_and_after_compaction(self):
+        self.touch(".claude-pins.md", self.PINS)
+        start = json.loads(self.hook("session_start.py", {"source": "startup"}))
+        self.assertIn("public API", start["hookSpecificOutput"]["additionalContext"])
+        self.assertIn("3 pins active", start["systemMessage"])
+        compact = json.loads(self.hook("session_start.py", {"source": "compact"}))
+        self.assertIn("never edit: src/api/**", compact["hookSpecificOutput"]["additionalContext"])
+        self.assertNotIn("systemMessage", compact)
+
+    def test_no_pins_no_context(self):
+        self.assertEqual(self.hook("session_start.py", {"source": "compact"}), "")
+
+
+class AgentFilesTest(TempDirCase):
+    def start(self):
+        return self.notice("session_start.py", {"source": "startup"})
+
+    def tool(self, *args):
+        return subprocess.run([sys.executable, os.path.join(HOOKS, "agent_files.py"), *args], capture_output=True,
+                              text=True, env=self.env, timeout=30)
+
+    def test_claude_md_must_import_agents_md(self):
+        self.touch("AGENTS.md", "# app\n")
+        self.touch("CLAUDE.md", "# app\n")
+        self.assertIn("@AGENTS.md", self.start())
+        self.touch("CLAUDE.md", "@AGENTS.md\n\n## Tools for Claude\n")
+        self.assertEqual(self.start(), "")
+
+    def test_copies_are_generated_and_checked(self):
+        self.touch("AGENTS.md", "# app\n\nUse pnpm.\n")
+        self.touch("CLAUDE.md", "@AGENTS.md\n")
+        self.write_cct(agent_files=["copilot", "cursor"])
+        self.assertEqual(self.tool("--check").returncode, 1)
+        self.assertIn("Copilot and Cursor", self.start())
+        self.assertEqual(self.tool("--write").returncode, 0)
+        self.assertEqual(self.tool("--check").returncode, 0)
+        with open(self.p(".cursor", "rules", "agents.mdc")) as f:
+            cursor = f.read()
+        self.assertTrue(cursor.startswith("---\n"))
+        self.assertIn("Use pnpm.", cursor)
+        with open(self.p(".github", "copilot-instructions.md")) as f:
+            self.assertIn("Generated from AGENTS.md", f.read())
+        self.touch("AGENTS.md", "# app\n\nUse bun.\n")
+        self.assertEqual(self.tool("--check").returncode, 1)
+
+    def test_drift_check_follows_the_import(self):
+        self.fake_tool("npm")
+        self.touch("package.json", json.dumps({"scripts": {}}))
+        self.touch("CLAUDE.md", "@AGENTS.md\n")
+        self.touch("AGENTS.md", "## Commands\n\n| Task | Command |\n|---|---|\n| Lint | `npm run lint` |\n")
+        self.assertIn("`npm run lint` in AGENTS.md", self.start())
+
+
+class PortabilityTest(TempDirCase):
+    def setUp(self):
+        super().setUp()
+        self.touch("CLAUDE.md", "## Commands\n\n| Task | Command |\n|---|---|\n| Clean | `rm -rf dist` |\n"
+                                "| Test | `pytest -q` |\n")
+        self.touch(".claude/settings.json", json.dumps({"hooks": {"PreToolUse": [{"hooks": [
+            {"type": "command", "command": "python3", "args": ["C:\\tools\\hook.py"]}]}]}}))
+        subprocess.run(["git", "init", "-q"], cwd=self.dir, check=True)
+        with open(self.p("deploy.sh"), "wb") as f:
+            f.write(b"#!/bin/sh\r\necho hi\r\n")
+        subprocess.run(["git", "-c", "core.autocrlf=false", "add", "deploy.sh"], cwd=self.dir, check=True)
+
+    def start(self):
+        return self.notice("session_start.py", {"source": "startup"})
+
+    def test_windows_teams_get_the_problems(self):
+        if WINDOWS:
+            self.skipTest("the check always runs on Windows; this test covers the opt-in")
+        self.write_cct(team_platforms=["linux", "windows"], done_gate={"commands": ["FOO=1 pytest"]})
+        message = self.start().split("[cct] These will break")[1]
+        self.assertIn("`rm -rf dist`", message)
+        self.assertIn("`FOO=1 pytest`", message)
+        self.assertIn("backslashes", message)
+        self.assertIn("*.sh text eol=lf", message)
+        self.assertIn("deploy.sh", message)
+        self.assertNotIn("pytest -q`", message)
+
+    def test_quiet_without_windows(self):
+        if WINDOWS:
+            self.skipTest("the check always runs on Windows")
+        self.write_cct(team_platforms=["linux", "macos"])
+        self.assertNotIn("other platform", self.start())
+
+
+class CodeHintsTest(TempDirCase):
+    def edit(self, rel, content, session="s1"):
+        path = self.touch(rel, content)
+        return self.run_hook(os.path.join(HOOKS, "format_file.py"),
+                             {"session_id": session, "tool_name": "Write",
+                              "tool_input": {"file_path": path, "content": content}})
+
+    def setUp(self):
+        super().setUp()
+        self.write_cct(lint_on_edit=False, format_on_edit=False)
+
+    def test_undeclared_js_import_is_reported(self):
+        self.touch("package.json", json.dumps({"dependencies": {"react": "^19"}}))
+        r = self.edit("src/a.ts", "import x from 'react-codeshift'\nimport React from 'react'\n"
+                                  "import fs from 'node:fs'\nimport y from './y'\nimport z from '@/lib/z'\n")
+        self.assertEqual(r.returncode, 2, r.stderr)
+        self.assertIn("`react-codeshift`", r.stderr)
+        for fine in ("`react`", "node:fs", "./y", "@/lib"):
+            self.assertNotIn(fine, r.stderr)
+        self.assertEqual(self.edit("src/b.ts", "import x from 'react-codeshift'\n").returncode, 0, "once per session")
+
+    def test_undeclared_python_import_is_reported(self):
+        if not hasattr(sys, "stdlib_module_names"):
+            self.skipTest("needs Python 3.10+ to tell the standard library apart")
+        self.touch("pyproject.toml", '[project]\nname = "app"\ndependencies = ["requests>=2", "Pillow"]\n')
+        self.touch("mylocal.py", "")
+        r = self.edit("app.py", "import os\nimport requests\nfrom PIL import Image\nimport mylocal\nimport yaml\n")
+        self.assertEqual(r.returncode, 2, r.stderr)
+        self.assertIn("`yaml`", r.stderr)
+        for fine in ("`os`", "`requests`", "`PIL`", "`mylocal`"):
+            self.assertNotIn(fine, r.stderr)
+
+    def test_existing_function_is_pointed_out(self):
+        subprocess.run(["git", "init", "-q"], cwd=self.dir, check=True)
+        self.touch("src/utils/date.ts", "export function formatDate(d: Date) {\n  return d.toISOString()\n}\n")
+        subprocess.run(["git", "add", "-A"], cwd=self.dir, check=True)
+        r = self.edit("src/report.ts", "const format_date = (d) => d.toString()\nexport function render() {}\n")
+        self.assertEqual(r.returncode, 2, r.stderr)
+        self.assertIn("`format_date`", r.stderr)
+        self.assertIn("src/utils/date.ts:1", r.stderr)
+        self.assertNotIn("render", r.stderr, "common names are skipped")
+
+    def test_switches(self):
+        self.touch("package.json", json.dumps({"dependencies": {}}))
+        self.write_cct(lint_on_edit=False, format_on_edit=False, dependency_check=False, duplicate_hints=False)
+        self.assertEqual(self.edit("src/a.ts", "import x from 'made-up'\n").returncode, 0)
+
+
 class DeviceProjectDedupTest(TempDirCase):
     """A device-wide hook stays silent when the project has its own copy, so nothing runs twice."""
 
@@ -1266,7 +1552,8 @@ class QuestionEvalCheckerTest(unittest.TestCase):
 
     def quick_rounds(self):
         return [{"questions": [self.q("Depth", "How thorough should setup be?")]},
-                {"questions": [self.q("Guard", preview=True), self.q("Never edit"), self.q("Done when")]}]
+                {"questions": [self.q("Guard", preview=True), self.q("Never edit"), self.q("Done when")]},
+                {"questions": [self.q("AI tools"), self.q("Platforms")]}]
 
     def test_good_quick_rounds_pass(self):
         self.assertEqual(eval_questions.check_questions(self.quick_rounds(), "quick"), [])
@@ -1318,7 +1605,7 @@ class FormatTest(unittest.TestCase):
                         self.assertRegex(front, rf"(?m)^name:\s*{folder}\s*$", "skill name must match its folder")
 
     def test_workflow_skills_are_manual_only(self):
-        for name in ["check", "commit", "review-changes", "template-update", "pr", "start-issue", "handoff"]:
+        for name in ["check", "commit", "review-changes", "template-update", "pr", "start-issue", "handoff", "pin"]:
             with self.subTest(skill=name):
                 front = self.frontmatter(os.path.join(ROOT, "skills", name, "SKILL.md"))
                 self.assertRegex(front, r"(?m)^disable-model-invocation:\s*true")
