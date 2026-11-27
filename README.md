@@ -28,7 +28,8 @@ This kit gives you:
 - **A complete, tested structure.** Every part of Claude Code's configuration, organised so each piece loads only when it's needed.
 - **A setup wizard that Claude runs itself.** It reads your project, fills in what it can detect, and asks you short multiple-choice questions about the rest. Monorepos get a brief per package.
 - **Memory across projects.** Your answers are saved, so the next project only asks project-specific questions.
-- **Safety and quality by default.** Hooks block destructive commands and secret-file edits, and send lint errors straight back to Claude to fix.
+- **Safety and quality by default.** Hooks block destructive commands and secret-file edits. Lint errors go straight back to Claude to fix, and an optional done gate runs your checks before Claude finishes.
+- **Credits stay in check.** Lint feedback and the done gate make Claude do extra work, so each has a cap: a file stops sending lint problems after 3 reports in a row, and the done gate after 3 tries. Notices (setup reminder, outdated commands, missing tools, new kit version) go to you, not to Claude, so they cost nothing.
 
 ## Quick start
 
@@ -113,10 +114,10 @@ The repository uses Claude Code's standard plugin layout, so nothing in it lives
 | [`rule-packs/`](rule-packs) → `.claude/cct/` | **Ready-made language rules** for Python, TypeScript/JavaScript, Go, Rust and Java/Kotlin. Setup installs the ones your project uses. |
 | [`skills/`](skills) → `.claude/skills/` | **Slash commands and on-demand know-how.** You run `/setup`, `/check`, `/review-changes`, `/commit` and `/template-update`. Claude picks up `remember-preference`, `write-tests`, `debug-issue` and `release-notes` when relevant. |
 | [`agents/`](agents) → `.claude/agents/` | **Specialist subagents** with their own context, tools and model: planner, reviewer, security auditor, test writer. |
-| [`hooks/`](hooks) → `.claude/hooks/` | **Enforced behaviour:** setup reminder, shell-command guard, secret-file protection, format and lint on every edit, an optional done gate that runs your checks before Claude finishes, status line. |
+| [`hooks/`](hooks) → `.claude/hooks/` | **Enforced behaviour:** shell-command guard, secret-file protection, format on every edit, optional lint feedback and a done gate that runs your checks before Claude finishes, notices for unfinished setup, outdated commands, missing tools and (opt-in) new kit versions, status line. |
 | [`templates/settings.project.json`](templates/settings.project.json) → `.claude/settings.json` | **Permissions, tool access, model, hooks and status line** (hooks and status line are added by the installer). Personal overrides go in `settings.local.json`. |
 | [`templates/mcp.json`](templates/mcp.json) → `.mcp.json` | **External tools** (GitHub, Jira, Slack, databases…), shared via git. Credentials stay in `${ENV_VARS}`. |
-| [`templates/cct.json`](templates/cct.json) → `.claude/cct.json` | **Kit switches:** guard level, format and lint on edit, lockfile protection, never-edit paths, done gate, setup reminder. |
+| [`templates/cct.json`](templates/cct.json) → `.claude/cct.json` | **Kit switches:** guard level, format and lint on edit, lockfile protection, never-edit paths, done gate, setup reminder, drift check, update notice. |
 
 <details>
 <summary><b>Full file tree</b></summary>

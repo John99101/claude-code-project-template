@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Set up, finish or re-tune the Claude Code configuration (CLAUDE.md, rules, settings, MCP servers, agents, hooks) for a project or for this device. Use when a "[cct]" session notice says setup is pending, right after installing the Claude Code kit, when the user runs /setup, or when they want to change how Claude works in a project.
+description: Set up, finish or re-tune the Claude Code configuration (CLAUDE.md, rules, settings, MCP servers, agents, hooks) for a project or for this device. Use right after installing the Claude Code kit, when the user runs /setup, or when they want to change how Claude works in a project.
 argument-hint: "[project | device | --defaults | what to change]"
 ---
 
@@ -18,11 +18,12 @@ Arguments from the user: $ARGUMENTS
 - **Never drop user-written content** from an existing `CLAUDE.md` or rule without asking.
 - Keep each `CLAUDE.md` under ~150 lines. Put topic detail in `.claude/rules/`.
 - Don't commit or push. Offer `/commit` at the end.
+- **Keep credits in check.** Lint feedback and the done gate send text back to Claude, so its follow-up work uses the user's Claude usage. They're worth it and on by default, but capped (`lint_max_repeats`, `done_gate.attempts`). When asking about them, name the cost in the option. Notices (setup reminder, drift check, missing tools, update notice) go to the user only and cost nothing. In this setup, don't run slow commands, and don't fix code to make a check pass: report and ask.
 - **Claude Code protects the `.claude/` folder** and asks before each write there, even in auto-accept mode. Before writing (step 5), tell the user in one line to expect these prompts and that "allow for this session" saves clicking through each one. If a write is refused, say which file and stop; don't remove the setup marker until every file is written.
 
 ### Non-interactive mode (`--defaults`)
 
-If the arguments contain `--defaults`, don't ask any questions and don't wait for plan approval. Use the detected value, or the saved preference, or the **recommended** option from the question bank. Skip MCP servers unless the stack clearly needs one, leave `protected_paths` empty, and don't save preferences. Everything else, including verification, runs as normal. End with a list of every choice made by default. This mode exists for automated tests and for users who want a quick start.
+If the arguments contain `--defaults`, don't ask any questions and don't wait for plan approval. Use the detected value, or the saved preference, or the **recommended** option from the question bank. Skip MCP servers unless the stack clearly needs one, leave `protected_paths` empty, and don't save preferences. The update notice makes a network request nobody agreed to, so `update_check` stays off. Everything else, including verification, runs as normal. End with a list of every choice made by default. This mode exists for automated tests and for users who want a quick start.
 
 ## 0. Pick the mode
 
@@ -74,7 +75,7 @@ Below, `.claude/cct/` means whichever location you found.
 | `git log --oneline -30`, `git branch -a`, `git remote -v` | Commit style, branch naming, default branch, GitHub/GitLab |
 | `pnpm-workspace.yaml`, `"workspaces"` in `package.json`, `nx.json`, `turbo.json`, `lerna.json`, `[workspace]` in `Cargo.toml`, `go.work`, `[tool.uv.workspace]` | **Monorepo**: package list and locations (see §5b) |
 
-Also check tools: `python3` (the hooks need it; warn if missing), and the formatter and linter binaries the hooks would call.
+Also check tools: `python3` (the hooks need it; warn if missing), and the formatter and linter binaries the hooks would call. Note each tool the project configures but that isn't installed (e.g. `[tool.ruff]` without `ruff`, `.prettierrc` without `node_modules/.bin/prettier`); the plan and the final summary list them.
 
 Run read-only commands only. Ask before running install, build or test commands that are slow or change files.
 
@@ -95,7 +96,8 @@ Show a short plan: each file to create or change, with the key values (commands,
 - `.claude/rules/*.md`: fill the "Project specifics" sections. Set `paths:` globs to the project's real directories. If a rule doesn't apply (e.g. `api-design.md` in a CLI with no API), ask, then remove it.
 - **Language rules:** for each main language, copy the matching pack from `.claude/cct/rule-packs/` (`python.md`, `typescript.md`, `go.md`, `rust.md`, `java.md`) into `.claude/rules/`, fill its specifics and narrow its `paths:`. Only write a language rule from scratch when no pack exists, using the same structure.
 - `.claude/settings.json`: add `allow` entries for the exact detected safe commands (test, lint, format, type check, e.g. `Bash(npm run test:*)`). Set `"model"` only if the user chose one. Keep the `hooks` block. Remove `statusLine` if the user doesn't want the status line.
-- `.claude/cct.json`: `guard_level`, `format_on_edit`, `lint_on_edit`, `protect_lockfiles`, `protected_paths` (a list of project-relative globs, folders as `dir/`) and `done_gate.commands` (the exact commands, fastest first; leave the list empty for No) from the answers.
+- `.claude/cct.json`: `guard_level`, `format_on_edit`, `lint_on_edit` (keep `lint_max_repeats` at 3 unless asked), `protect_lockfiles`, `protected_paths` (a list of project-relative globs, folders as `dir/`) and `done_gate.commands` (the exact commands, fastest first; leave the list empty for No) from the answers.
+- `~/.claude/cct.json`: `update_check` from the update-notice answer (personal, so it goes here, not into the shared project file). Merge it into the file; don't drop other keys.
 - `.mcp.json`: add the chosen servers from [mcp-catalog.json](mcp-catalog.json), copying only each entry's `config` object under `mcpServers.<name>`. The catalog is checked weekly, but if unsure, check the vendor's docs. List every env var the user must set.
 - `.claude/agents/*.md`: set `model:` per the user's answers. Remove agents they don't want.
 - `.gitignore`: make sure `.claude/settings.local.json`, `CLAUDE.local.md`, `.env` and `.env.*` (but not `.env.example`) are ignored.
@@ -112,7 +114,7 @@ Claude Code loads a `CLAUDE.md` from a subfolder when it works in that folder, s
 **Device mode**
 - `~/.claude/CLAUDE.md`: personal preferences for all projects, from `~/.claude/cct/CLAUDE.user.template.md`, merged into any existing file.
 - `~/.claude/rules/`: keep only rules that make sense everywhere (security, git workflow, general code style). Remove project-specific placeholders or move them to "decide per project". Delete `api-design.md` and `testing.md` from the device rules unless the user wants global defaults.
-- `~/.claude/cct.json` and, if chosen, `"model"` in `~/.claude/settings.json`.
+- `~/.claude/cct.json` (including `update_check`) and, if chosen, `"model"` in `~/.claude/settings.json`.
 
 ## 6. Verify
 
@@ -120,6 +122,10 @@ Claude Code loads a `CLAUDE.md` from a subfolder when it works in that folder, s
 - No placeholders left: `grep -rn '{{' CLAUDE.md .claude/rules` (plus any package `CLAUDE.md`; device: `~/.claude/CLAUDE.md ~/.claude/rules`).
 - Hooks work: `echo '{"tool_input":{"command":"git status"}}' | python3 .claude/hooks/guard_bash.py` prints nothing; with `"rm -rf /"` it prints a `deny`.
 - If the user agreed (and always with `--defaults` when it's fast), run the detected test or lint command once to confirm it's right.
+- **Done gate:** if `done_gate.commands` is set, run it once exactly as the hook will: `python3 .claude/hooks/done_gate.py --check` (device install: `~/.claude/hooks/cct/done_gate.py`; plugin: `${CLAUDE_PLUGIN_ROOT}/hooks/done_gate.py`). The user agreed to this run in the done-gate question. It prints PASS, FAIL or TIMEOUT per command, with a short output tail, and the total time.
+  - A failure or timeout: ask with AskUserQuestion: **Fix the command** (wrong name or folder; you correct it and re-run `--check`) · **Keep it** (it fails because of existing problems in the code; each turn with edits will then make me work on them, using credits) · **Drop it from the gate**. Never change code to make it pass during setup.
+  - All pass but the total is over 30 s: say that it runs after every turn with edits and offer to keep only the faster commands.
+- **Drift:** for every command you wrote to `CLAUDE.md` or `done_gate.commands`, check it exists (script in `package.json`, target in the `Makefile`, tool installed). The session-start drift check flags any you miss, but it's better caught now.
 
 ## 7. Finish
 
@@ -127,6 +133,8 @@ Claude Code loads a `CLAUDE.md` from a subfolder when it works in that folder, s
 2. Unless in `--defaults` mode, ask whether to save the general answers to `~/.claude/cct-preferences.md` for future projects (format in [questions.md](questions.md)). Save only preferences that apply across projects, never project facts.
 3. Tell the user, briefly:
    - what was set up, plus anything you couldn't detect;
+   - which features send work back to Claude and so use credits (lint feedback, done gate), and their caps;
+   - tools the project configures but that aren't installed, with how to install each (the hooks will also tell the user when an edit skips one);
    - env vars to set for MCP servers;
    - to restart Claude Code (or open `/hooks` and `/mcp`) so new hooks and MCP servers load;
-   - that `/setup` re-tunes anything, `CLAUDE.local.md` holds personal overrides, and `/template-update` pulls kit updates.
+   - that `/setup` re-tunes anything, `CLAUDE.local.md` holds personal overrides, and `/template-update` pulls kit updates (plugin: `/plugin`).
