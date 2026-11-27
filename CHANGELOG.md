@@ -4,6 +4,11 @@ All notable changes to this kit. The format follows [Keep a Changelog](https://k
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-11-27
+
+### Added
+- **Social preview image** for the repository, in `.github/social-preview/`, with `make.py` to redraw it (needs Pillow; maintainers only, the kit itself stays dependency-free). `install.py --adopt` removes the folder from "Use this template" copies, like the other kit-only files.
+
 ## [2.2.0] - 2026-11-27
 
 ### Added
@@ -114,7 +119,8 @@ All notable changes to this kit. The format follows [Keep a Changelog](https://k
 - MCP catalog: GitHub, Atlassian (Jira/Confluence), Slack, Postgres, SQLite, Playwright, Context7.
 - Test suite and CI on Linux and macOS.
 
-[Unreleased]: https://github.com/John99101/claude-code-project-template/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/John99101/claude-code-project-template/compare/v2.2.1...HEAD
+[2.2.1]: https://github.com/John99101/claude-code-project-template/releases/tag/v2.2.1
 [2.2.0]: https://github.com/John99101/claude-code-project-template/releases/tag/v2.2.0
 [2.1.0]: https://github.com/John99101/claude-code-project-template/releases/tag/v2.1.0
 [2.0.0]: https://github.com/John99101/claude-code-project-template/releases/tag/v2.0.0
