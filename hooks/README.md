@@ -32,6 +32,7 @@ Change behaviour in `.claude/cct.json` (project) or `~/.claude/cct.json` (all pr
   "lint_max_repeats": 3,
   "protect_lockfiles": true,
   "protected_paths": ["vendor/", "src/gen/**"],
+  "done_gate": { "commands": ["pnpm lint", "pnpm vitest related --run {files}"], "timeout": 120, "attempts": 3 },
   "setup_reminder": true,
   "drift_check": true,
   "env_check": true,

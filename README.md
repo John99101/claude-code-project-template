@@ -117,7 +117,7 @@ Claude  PASS  pnpm lint (2.1 s) · PASS  pnpm typecheck (4.0 s) · PASS  pnpm vi
         Done. Set GITHUB_PERSONAL_ACCESS_TOKEN and DATABASE_URI, then restart Claude Code.
 ```
 
-Quick setup asks about ten questions; Thorough asks about 25. Monorepos get a short brief per package. See the [full walkthrough](docs/GUIDE.md#6-a-full-example).
+Quick setup asks about a dozen questions; Thorough asks about 30. Monorepos get a short brief per package. See the [full walkthrough](docs/GUIDE.md#6-a-full-example).
 
 ## What you get
 

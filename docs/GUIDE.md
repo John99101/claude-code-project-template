@@ -132,11 +132,11 @@ Agents run in a **separate context window**, so a long exploration or review doe
 
 | Hook | Event | Purpose |
 |---|---|---|
-| `session_start.py` | Session start | Tells **you** when setup is unfinished, when commands have drifted (see [notices](#notices-at-session-start)), and, if you opted in, when a new kit version is out. Claude never sees these, so they cost nothing. Silent otherwise. |
+| `session_start.py` | Session start | Tells **you** what needs attention (see [notices](#notices-at-session-start)): unfinished setup, drifted commands, stale installs, teammates' config changes, a lethal trifecta, portability problems, a waiting handoff, and (opt-in) a new kit version. Claude never sees these, so they cost nothing. The one thing it adds to Claude's context is your own [pins](#pins). |
 | `deps_guard.py` | Before every shell command | Looks up each package an install would add (npm, pnpm, yarn, bun, pip, uv, poetry, pdm, cargo) in its registry. Blocks names that don't exist; asks before packages younger than `dependency_min_age_days` (30) or barely downloaded. See [made-up packages](#made-up-packages). |
-| `guard_bash.py` | Before every shell command | Blocks destructive commands, asks before risky ones (see [§7](#7-the-safety-model)) |
-| `protect_files.py` | Before every file edit | Blocks edits to secrets and git internals; asks before lockfiles and CI |
-| `format_file.py` | After every file edit | Formats the file with *your project's* formatter, then lints it. **Lint problems go straight back to Claude**, which fixes them before moving on instead of finding them later at `/check`. To keep credits in check, a file that still has problems after `lint_max_repeats` reports in a row (default 3) isn't reported again in that session, and you're told. If the project configures a formatter or linter that isn't installed, you're told once per session instead of the step being skipped silently. |
+| `guard_bash.py` | Before every shell command | Blocks destructive commands, asks before risky ones (see [§7](#7-the-safety-model)). Also asks before deleting test files, and, when the [lethal trifecta](#the-lethal-trifecta) is present, before commands that send data out. |
+| `protect_files.py` | Before every file edit | Blocks edits to secrets, git internals, `protected_paths` and paths your [pins](#pins) rule out; asks before lockfiles, CI and edits that [weaken tests](#test-guard). |
+| `format_file.py` | After every file edit | Formats the file with *your project's* formatter, then lints it. **Lint problems go straight back to Claude**, which fixes them before moving on instead of finding them later at `/check`. To keep credits in check, a file that still has problems after `lint_max_repeats` reports in a row (default 3) isn't reported again in that session, and you're told. If the project configures a formatter or linter that isn't installed, you're told once per session instead of the step being skipped silently. It also points Claude to [undeclared imports](#made-up-packages) and [functions that already exist](#duplicate-hints). |
 | `batch_check.py` | When Claude finishes a turn | When uncommitted changes pass `batch_max_lines` (300; lockfiles, snapshots and generated files excluded), tells you to commit the finished part. With `"batch_nudge": "claude"`, Claude is told too and proposes a commit point. `--size [base]` prints the count `/pr` uses. |
 | `claim_check.py` | When Claude finishes a turn | If the final reply claims tests pass, a build works or something was verified, but no test, lint, build or type-check command ran in that turn, sends Claude back once to run it or correct the claim. |
 | `done_gate.py` | When Claude finishes a turn | Off until `done_gate.commands` is set. If Claude changed files in the turn, runs those commands (your done checklist) and **sends a failure back to Claude**, which keeps working instead of saying it's done. See [the done gate](#the-done-gate) below. |
@@ -192,10 +192,28 @@ These go to you as a message in the terminal. Claude never sees them, so they us
 - **Handoff:** a `.claude-handoff.md` from `/handoff` is waiting. Run `/handoff resume`.
 - **AI tools disagree:** `AGENTS.md` exists but `CLAUDE.md` doesn't import it (Claude Code doesn't read `AGENTS.md` on its own), or the generated Copilot, Cursor or Gemini files are out of date. See [one file for every AI tool](#one-file-for-every-ai-tool).
 - **Portability** (when `team_platforms` includes `windows`): commands in `CLAUDE.md`, `AGENTS.md` or `done_gate` that only work in POSIX shells (`rm -rf`, `cp`, `export`, `FOO=1 cmd`, `./x.sh`), hooks in `settings.json` with backslashes or one machine's absolute paths, and shell scripts with CRLF line endings or no `.gitattributes` rule keeping them LF.
+- **Lethal trifecta:** your MCP servers and allowed tools give Claude private data, untrusted content and a way to send data out. See [the lethal trifecta](#the-lethal-trifecta).
+- **Pins active:** how many pins `.claude-pins.md` holds, as a reminder that they're in force.
 - **Missing tools** (from `format_file.py`): the project configures ruff, prettier, eslint, biome, golangci-lint and so on, but the tool isn't installed, so edits skip it.
 - **Update notice** (opt-in, script installs only): see [§11](#11-updating-customising-and-removing).
 
 Hooks need only `python3` and the standard library. They never download anything, never break a session on bad input, and only use tools already in your project (`node_modules/.bin`, `.venv/bin`) or on your `PATH`.
+
+#### One file for every AI tool
+
+Teams that mix Claude Code with Cursor, Copilot, Codex or Gemini end up with one instructions file per tool, and they drift apart. When setup learns the team uses other tools, it makes `AGENTS.md` the shared source: `CLAUDE.md` keeps a first line `@AGENTS.md` plus Claude-specific parts, and the files listed in `agent_files` are generated from it:
+
+| `agent_files` value | File |
+|---|---|
+| `copilot` | `.github/copilot-instructions.md` |
+| `cursor` | `.cursor/rules/agents.mdc` |
+| `gemini` | `GEMINI.md` |
+
+Codex reads `AGENTS.md` itself. Regenerate the copies with `python3 .claude/hooks/agent_files.py --write`, and add `python3 .claude/hooks/agent_files.py --check` to CI to fail a PR that changes one without the other.
+
+#### Duplicate hints
+
+When an edit adds a function (Python, JS/TS, Go, Rust), `format_file.py` searches the repo with `git grep` for one with the same name, in any casing (`formatDate`, `format_date`, `FormatDate`), and tells Claude where it is. Short or generic names (`render`, `handler`, `main`), tests and vendored code are skipped, and each name is reported once per session. `"duplicate_hints": false` turns it off.
 
 ### `.mcp.json` — external tools
 Ships empty. During setup, Claude suggests servers that fit your stack: GitHub if your remote is GitHub, Postgres if you use Postgres, and so on. It adds the ones you pick from [`mcp-catalog.json`](../skills/setup/mcp-catalog.json), which is checked weekly so its entries stay current. **Credentials are always `${ENV_VAR}` references** or browser logins via `/mcp`, so the file is safe to commit and share.
@@ -209,8 +227,8 @@ Pre-approves read-only git commands, asks before `git push`, denies reading `.en
 flowchart TD
     A[install.py, the plugin, or 'Use this template'] --> B[.claude/cct-pending marker]
     B --> C[Next session: session_start hook notices marker]
-    C --> D[Claude offers /setup]
-    D -->|you agree| E[Load saved preferences + existing docs]
+    C --> D[You see a notice: run /setup]
+    D -->|you run it| E[Load saved preferences + existing docs]
     E --> F[Detect stack, commands, tools, conventions, workspaces]
     F --> G[Ask only what is unknown]
     G --> H[Show plan]
@@ -222,7 +240,7 @@ flowchart TD
 
 **Detection** reads: package manifests and lockfiles (language, framework, package manager); test, lint, format and type-check configs; `Makefile`, `justfile` and `package.json` scripts (real commands); CI workflows (what must pass); Docker and ORM files (databases → MCP suggestions); workspace files (monorepos); the folder layout (architecture); git history (commit style, branch naming); and any existing `CLAUDE.md`, `AGENTS.md`, `.cursorrules` or Copilot instructions, which are merged, not discarded.
 
-**Questions** come from a fixed [question bank](../skills/setup/questions.md), so they're consistent. Setup first asks how thorough to be: **Quick** (about 10 questions: replies, autonomy, tests, guard level, never-edit paths, the done checklist, rules) or **Thorough** (about 25, adding models, formatting, commit and branch style, deploy access, docs duties and supported versions). Each round has at most four multiple-choice questions. Every question opens with what setup found and where ("Found Jest and Vitest configs. Which is current?"), names the file the answer goes to, and every option says what it does and what it costs; guard level, commit style and agent models show previews. Anything detected or saved is *not* asked again, and anything skipped uses the recommended answer; both are listed in the plan for you to confirm.
+**Questions** come from a fixed [question bank](../skills/setup/questions.md), so they're consistent. Setup first asks how thorough to be: **Quick** (about a dozen: replies, autonomy, tests, guard level, never-edit paths, the done checklist and done gate, rules, other AI tools, the team's platforms, the update notice) or **Thorough** (about 30, adding models, formatting and linting, learning mode, commit and branch style, specs, deploy access, docs duties and supported versions). Each round has at most four multiple-choice questions. Every question opens with what setup found and where ("Found Jest and Vitest configs. Which is current?"), names the file the answer goes to, and every option says what it does and what it costs; guard level, commit style and agent models show previews. Anything detected or saved is *not* asked again, and anything skipped uses the recommended answer; both are listed in the plan for you to confirm.
 
 **Nothing is written before you approve the plan**, and nothing is committed. Your existing content is merged, never silently dropped.
 
@@ -241,45 +259,36 @@ Setup recognises pnpm, npm and yarn workspaces, Nx, Turborepo, Lerna, Cargo work
 
 *Illustrative.* A TypeScript API, installed with `install.py --project`, then opened in Claude Code:
 
-> **Claude:** This project has the Claude Code kit installed, but setup isn't finished. Want me to run `/setup` now?
+> **[cct]** The Claude Code kit is installed here, but setup isn't finished. Run /setup to finish it.
 >
-> **You:** yes
+> **You:** /setup
 >
 > **Claude:** *(reads package.json, pnpm-lock.yaml, vitest.config.ts, eslint.config.js, .prettierrc, .github/workflows/ci.yml, docker-compose.yml, git log)*
 > I found: TypeScript + Fastify, pnpm, Vitest, ESLint + Prettier, Postgres in docker-compose, Conventional Commits in history. A few questions:
 >
-> 1. **How independently should I work?** → *Ask before big or risky changes (recommended)*
-> 2. **How should tests be handled?** → *Write tests with every change (recommended)*
-> 3. **Connect any tools via MCP?** (multi-select) → *GitHub*, *Postgres*
-> 4. **Safety guard level?** → *Standard (recommended)*
+> 1. **How thorough should setup be?** → *Quick (recommended)*
+> 2. **How independently should I work?** → *Ask before big or risky changes (recommended)*
+> 3. **CI runs pnpm lint, typecheck and test. What must pass before I say I'm done?** → *all three*
+> 4. **Run them automatically when I finish a turn that changed files?** → *Yes, the fast checks, only related tests*
+> 5. **Does the team also use other AI coding tools?** → *Cursor*
+> 6. **Which systems does the team develop on?** → *macOS, Windows*
+> 7. **Connect any tools via MCP?** (multi-select) → *GitHub*, *Postgres*
+>
+> GitHub plus Postgres gives me private data, untrusted content (issues) and a way to send data out. I'll set Postgres to a read-only login; the guard will ask before anything is sent out.
 >
 > **Plan**
 > - `CLAUDE.md`: overview, stack, commands (`pnpm i`, `pnpm dev`, `pnpm test`, `pnpm vitest run <file>`, `pnpm lint`, `pnpm typecheck`, `pnpm build`), architecture of `src/routes`, `src/services`, `src/db`
 > - Rules: fill code-style (Prettier, ESLint, camelCase), testing (`paths: src/**/*.test.ts`), api-design (`paths: src/routes/**`), git-workflow (Conventional Commits, feature branches); install the `typescript.md` pack
 > - `settings.json`: allow `pnpm test`, `pnpm lint`, `pnpm typecheck`
 > - `.mcp.json`: GitHub (`GITHUB_PERSONAL_ACCESS_TOKEN`), Postgres (`DATABASE_URI`, read-only mode)
+> - `AGENTS.md` as the shared instructions; `CLAUDE.md` imports it; `.cursor/rules/agents.mdc` generated from it
+> - `cct.json`: done gate `pnpm lint`, `pnpm typecheck`, `pnpm vitest related --run {files}`; `team_platforms: macos, windows`
 >
 > Apply? → **Apply**
 >
-> **Claude:** Done. All JSON is valid, no placeholders are left, and the hooks respond correctly. Set `GITHUB_PERSONAL_ACCESS_TOKEN` and `DATABASE_URI`, then restart Claude Code to load the new hooks and MCP servers. Save your general answers for future projects? → **Yes**
+> **Claude:** PASS pnpm lint (2.1 s) · PASS pnpm typecheck (4.0 s) · PASS pnpm vitest related (1.3 s). All JSON is valid, no placeholders are left, and the hooks respond correctly. Set `GITHUB_PERSONAL_ACCESS_TOKEN` and `DATABASE_URI`, then restart Claude Code to load the new hooks and MCP servers. Save your general answers for future projects? → **Yes**
 
 The next project only gets asked project-specific questions.
-
-#### One file for every AI tool
-
-Teams that mix Claude Code with Cursor, Copilot, Codex or Gemini end up with one instructions file per tool, and they drift apart. When setup learns the team uses other tools, it makes `AGENTS.md` the shared source: `CLAUDE.md` keeps a first line `@AGENTS.md` plus Claude-specific parts, and the files listed in `agent_files` are generated from it:
-
-| `agent_files` value | File |
-|---|---|
-| `copilot` | `.github/copilot-instructions.md` |
-| `cursor` | `.cursor/rules/agents.mdc` |
-| `gemini` | `GEMINI.md` |
-
-Codex reads `AGENTS.md` itself. Regenerate the copies with `python3 .claude/hooks/agent_files.py --write`, and add `python3 .claude/hooks/agent_files.py --check` to CI to fail a PR that changes one without the other.
-
-#### Duplicate hints
-
-When an edit adds a function (Python, JS/TS, Go, Rust), `format_file.py` searches the repo with `git grep` for one with the same name, in any casing (`formatDate`, `format_date`, `FormatDate`), and tells Claude where it is. Short or generic names (`render`, `handler`, `main`), tests and vendored code are skipped, and each name is reported once per session. `"duplicate_hints": false` turns it off.
 
 ## 7. The safety model
 
@@ -294,6 +303,16 @@ The guard sorts shell commands and file edits into three outcomes:
 The guard reads commands the way a shell does. It understands quotes (so `git commit -m "fix rm -rf / bug"` is fine), splits chains like `a && b | c`, and **looks inside nested commands**: `sh -c '…'`, `bash -c "…"`, `eval …`, `$(…)` and backticks. So `bash -c "rm -rf ~"` is blocked just like `rm -rf ~`.
 
 `guard_level: "strict"` additionally asks before `git push`, adding dependencies and any `rm`. `"off"` disables both guards (not recommended).
+
+Beyond single commands, the kit guards against the ways agents typically go wrong:
+
+| Risk | Protection |
+|---|---|
+| Installing a package whose name the model made up | [Dependency check](#made-up-packages): blocked if it doesn't exist, your OK if it's brand new or barely used |
+| Making a failing test pass by weakening it | [Test guard](#test-guard): your OK before skips, deleted tests, removed assertions or changed expected values |
+| Prompt injection leaking private data | [Trifecta check](#the-lethal-trifecta): warns about the combination, asks before data is sent out |
+| Forgetting your constraints after compaction | [Pins](#pins): re-added to the context and enforced for paths |
+| Claiming checks it never ran | Claim check and [done gate](#the-done-gate) |
 
 **It's a safety net, not a sandbox.** It catches common accidents and obvious destructive patterns, but a deliberately obfuscated command (base64-decoded, built from variables, written to a script first) can get past pattern matching. For untrusted code or long unattended runs, also turn on **Claude Code's built-in sandbox** (`/sandbox`), which isolates the filesystem and network at the operating-system level. The two work well together: the guard explains *why* something is blocked, and the sandbox makes sure anything missed can't do damage.
 
@@ -441,7 +460,7 @@ It deletes every kit file you haven't changed, **keeps and lists the ones you ha
 
 | Check | What it covers | When |
 |---|---|---|
-| [`tests/test_kit.py`](../tests/test_kit.py) | Every guard rule for Bash and PowerShell (including the loopholes above), file protection, lint feedback, the done gate, status line, de-duplication across project/device/plugin installs, settings merge and migration, install, update, uninstall, adopt, plugin files, file formats | Every push and pull request, on **Linux, macOS and Windows** |
+| [`tests/test_kit.py`](../tests/test_kit.py) | Every guard rule for Bash and PowerShell (including the loopholes above), file protection, pins, the test guard, the trifecta check, the dependency check (against local stand-ins for the registries), lint feedback and its cap, import and duplicate hints, the done gate and claim check, the small-batch nudge, every session-start notice, the status line, de-duplication across project/device/plugin installs, settings merge and migration, install, update, uninstall, adopt, plugin files, file formats | Every push and pull request, on **Linux, macOS and Windows** |
 | `claude plugin validate .` | The plugin and marketplace manifests | Every push |
 | [`tests/eval_setup.py`](../tests/eval_setup.py) | Runs `/setup --defaults` **for real** on four sample projects in [`tests/fixtures/`](../tests/fixtures) (Python, TypeScript, Go, pnpm monorepo) and checks: marker removed, no placeholders left, valid JSON, the right commands in `CLAUDE.md`, the right rule packs, package briefs in the monorepo, guard still working | On your machine whenever you like, and weekly or on demand on GitHub (see below) |
 | [`tests/eval_questions.py`](../tests/eval_questions.py) | Runs a read-only dry run of `/setup` on the same sample projects and checks the questions it would ask: at most 4 per round, 2–4 options each with a description, recommended option first, short headers, no filler, previews, and the right questions for Quick or Thorough | Weekly on GitHub, right after the setup eval, and any time locally (`python3 tests/eval_questions.py [--depth quick]`) |
@@ -479,13 +498,19 @@ GitHub pauses scheduled workflows in a public repository after 60 days without a
 | Every turn ends with a long test run | The done gate runs after any turn with edits. Keep only fast checks in `done_gate.commands` (lint, unit tests) and leave slow ones to `/check` or CI. |
 | Claude keeps getting lint messages it can't fix | After 3 reports in a row for one file they stop (`lint_max_repeats`). The linter's own config may disagree with the project: fix the config, or set `lint_on_edit: false`. |
 | A drift notice names a command that's fine | The check only reads files, so a script generated at install time or a tool installed outside `PATH` looks missing. Fix `PATH`, or set `"drift_check": false`. |
+| The dependency check blocks a package you know exists | It's probably on a private registry: name it with `--registry` / `--index-url` (those installs aren't checked), install it yourself, or set `"dependency_check": false`. |
+| The test guard asks about an honest change | It reads text patterns, so moving assertions into a helper can look like removing them. Allow it; in `strict` mode, make the change yourself. |
+| A trifecta warning you've already dealt with | It repeats weekly while the combination exists. Use read-only, non-production logins for data servers and turn web or browser servers on only when needed, or set `"trifecta_check": false`. |
 | An MCP server fails to connect | Check the env vars are set in the shell that starts Claude Code, run `/mcp` (some servers need a browser login there), and check the vendor docs. |
 | Setup is very slow with many confirmations | Another plugin may be adding a step per file (see [§10](#10-using-the-kit-with-other-plugins-eg-ecc)). |
 
 ## 14. FAQ
 
 **Does the kit send any data anywhere?**
-No. The hooks and installer run locally and make no network calls. MCP servers you choose to add connect to their own services. The setup eval and catalog check run only in the kit's own CI, or when you start them.
+Only two lookups, and nothing about you or your project. Before Claude installs a package, the dependency check asks npm, PyPI or crates.io about that package name (turn off with `"dependency_check": false`). If you opted in to the update notice, the session-start hook asks GitHub for the kit's latest release at most once a week. Both use a generic User-Agent. Everything else runs locally. MCP servers you choose to add connect to their own services, and the setup eval and catalog check run only in the kit's own CI or when you start them.
+
+**Does it use more of my Claude credits?**
+Only where it's worth it, and capped. Notices go to you, not Claude, so they cost nothing. Lint feedback stops after 3 reports per file, the done gate after 3 tries per turn, the claim check fires at most once per turn, and import and duplicate hints once per name per session. Skills like `/pr` or `/spec` only run when you start them. The status line shows the session's cost.
 
 **Will it overwrite my existing `CLAUDE.md` or settings?**
 No. The installer never overwrites files. `settings.json` is *merged*, adding only missing entries, with a backup. Setup merges into your `CLAUDE.md` and asks before removing anything.
@@ -494,7 +519,7 @@ No. The installer never overwrites files. `settings.json` is *merged*, adding on
 Yes. See [§10](#10-using-the-kit-with-other-plugins-eg-ecc).
 
 **Why Python for hooks?**
-It's on almost every developer machine, handles JSON safely, and works the same on Linux and macOS. Shell plus `jq` would add a dependency and be harder to test.
+It's on almost every developer machine, handles JSON safely, and works the same on Linux, macOS and Windows. Shell plus `jq` would add a dependency and be harder to test.
 
 **What does Claude do with `~/.claude/cct-preferences.md`?**
 It reads it at setup to skip questions you've already answered, and writes to it only after asking. It holds general preferences only, never project details.

@@ -6,7 +6,7 @@
     {
       "name": "cct",
       "source": "./",
-      "description": "Self-configuring Claude Code setup with safety and lint hooks, agents and workflow skills"
+      "description": "Self-configuring Claude Code setup with safety, test and dependency guards, a done gate, agents and workflow skills"
     }
   ]
 }
