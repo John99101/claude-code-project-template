@@ -37,7 +37,7 @@ DEV_FILES = ["install.py", "install.sh", "install.ps1", "scripts", "templates", 
              "tests/eval_questions.py", "tests/fixtures",
              ".github/workflows/ci.yml", ".github/workflows/eval-setup.yml", ".github/workflows/mcp-catalog.yml",
              ".github/workflows/release.yml", ".github/ISSUE_TEMPLATE", ".github/pull_request_template.md",
-             ".github/social-preview",
+             ".github/social-preview", ".github/demo",
              "docs/GUIDE.md", "CHANGELOG.md", "CONTRIBUTING.md", "VERSION", "INSTALL.md", "LICENSE", "README.md"]
 
 
