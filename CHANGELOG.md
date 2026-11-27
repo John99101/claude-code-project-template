@@ -4,6 +4,8 @@ All notable changes to this kit. The format follows [Keep a Changelog](https://k
 
 ## [Unreleased]
 
+## [2.2.1.1] - 2026-11-27
+
 ### Added
 - **Dependency check against made-up packages.** Before `npm/pnpm/yarn/bun add`, `pip install`, `uv add`, `poetry add`, `pdm add` or `cargo add`, each package is looked up on npm, PyPI or crates.io. Names that don't exist are blocked; packages younger than `dependency_min_age_days` (30) or barely downloaded need your OK. Offline or with a private registry, installs go through. Imports an edit adds that no manifest declares are pointed out to Claude. `"dependency_check": false` turns both off.
 - **Claim check:** a new `Stop` hook sends Claude back once when its final reply claims tests pass, a build works or something was verified, but no check ran in that turn. `"claim_check": false` turns it off.
@@ -134,7 +136,8 @@ All notable changes to this kit. The format follows [Keep a Changelog](https://k
 - MCP catalog: GitHub, Atlassian (Jira/Confluence), Slack, Postgres, SQLite, Playwright, Context7.
 - Test suite and CI on Linux and macOS.
 
-[Unreleased]: https://github.com/John99101/claude-code-project-template/compare/v2.2.1...HEAD
+[Unreleased]: https://github.com/John99101/claude-code-project-template/compare/v2.2.1.1...HEAD
+[2.2.1.1]: https://github.com/John99101/claude-code-project-template/releases/tag/v2.2.1.1
 [2.2.1]: https://github.com/John99101/claude-code-project-template/releases/tag/v2.2.1
 [2.2.0]: https://github.com/John99101/claude-code-project-template/releases/tag/v2.2.0
 [2.1.0]: https://github.com/John99101/claude-code-project-template/releases/tag/v2.1.0
