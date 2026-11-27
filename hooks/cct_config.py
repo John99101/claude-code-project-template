@@ -44,6 +44,14 @@ def project_dir():
     return os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
 
 
+def relpath(path, start):
+    """os.path.relpath, or the absolute path when there's no relative one (Windows: another drive)."""
+    try:
+        return os.path.relpath(path, start)
+    except ValueError:
+        return os.path.abspath(path)
+
+
 def home_claude():
     return os.path.join(os.path.expanduser("~"), ".claude")
 

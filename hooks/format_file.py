@@ -18,7 +18,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from cct_config import (defer_to_project, load_config, notify, project_dir, read_input, read_state,  # noqa: E402
+from cct_config import (defer_to_project, load_config, notify, project_dir, read_input, read_state, relpath,  # noqa: E402
                         state_path, write_state)
 from done_gate import mark_edited  # noqa: E402
 import code_hints  # noqa: E402
@@ -374,7 +374,7 @@ def code_feedback(payload, path, cfg):
     new, old = code_hints.edit_texts(payload, path, proj)
     if not new:
         return []
-    rel = os.path.relpath(path, proj).replace(os.sep, "/")
+    rel = relpath(path, proj).replace(os.sep, "/")
     out = []
     if want_imports:
         found = code_hints.undeclared_imports(path, new, old, proj)
@@ -422,7 +422,7 @@ def main():
                 lines = diagnostics_for(path, output, lint.cwd)
             elif result.returncode == 1:
                 lines = output
-        rel = os.path.relpath(path, project_dir())
+        rel = relpath(path, project_dir())
         send, n, limit, capped = count_report(payload, cfg, rel, bool(lines)) if result is not None else (True, 0, 0, None)
         if lines and send:
             shown = lines[:MAX_LINES] + ([f"… {len(lines) - MAX_LINES} more lines"] if len(lines) > MAX_LINES else [])

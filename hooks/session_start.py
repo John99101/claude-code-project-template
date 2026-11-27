@@ -25,7 +25,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cct_config import (defer_to_project, home_claude, is_device_copy, load_config, notify, once,  # noqa: E402
-                        project_dir, prune_state, read_input, setup_command)
+                        project_dir, prune_state, read_input, relpath, setup_command)
 from done_gate import record_baseline  # noqa: E402
 import agent_files  # noqa: E402
 import drift  # noqa: E402
@@ -153,9 +153,9 @@ def main():
             messages.append(safe(team_notice.notice, proj))
         messages.append(safe(handoff_notice, proj))
         found = safe(agent_files.problems, proj, cfg)
-        script = os.path.relpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent_files.py"), proj)
-        script = "python3 " + (script if not script.startswith("..") else os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "agent_files.py")).replace(os.sep, "/")
+        tool = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent_files.py")
+        script = relpath(tool, proj)
+        script = "python3 " + (tool if script.startswith("..") else script).replace(os.sep, "/")
         messages.append(once("agents", os.path.abspath(proj), agent_files.message(found, script) if found else None))
         if cfg.get("trifecta_check", True):
             found = safe(trifecta.active, proj, os.path.dirname(os.path.abspath(__file__)))

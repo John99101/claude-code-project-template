@@ -14,6 +14,8 @@ import re
 import subprocess
 import sys
 
+from cct_config import relpath
+
 JS_EXT = {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts", ".vue", ".svelte"}
 JS_IMPORT = re.compile(r"""(?:\bimport\s+(?:type\s+)?(?:[\w*{}\s,$]+\s+from\s+)?|\bexport\s+[\w*{}\s,$]+\s+from\s+|"""
                        r"""\brequire\s*\(\s*|\bimport\s*\(\s*)["']([^"'\s]+)["']""")
@@ -77,7 +79,7 @@ def edit_texts(payload, path, proj):
         return ("\n".join(str(e.get("new_string") or "") for e in edits),
                 "\n".join(str(e.get("old_string") or "") for e in edits))
     if "content" in tool_input:
-        rel = os.path.relpath(path, proj).replace(os.sep, "/")
+        rel = relpath(path, proj).replace(os.sep, "/")
         return str(tool_input.get("content") or ""), git(proj, "show", f"HEAD:{rel}") or ""
     return "", ""
 
@@ -240,7 +242,7 @@ def duplicates(path, new, old, proj):
     if not kind:
         return []
     added = defined_names(new, kind) - defined_names(old, kind)
-    rel = os.path.relpath(path, proj).replace(os.sep, "/")
+    rel = relpath(path, proj).replace(os.sep, "/")
     found = []
     for name in sorted(added):
         if len(name) < MIN_NAME or name in COMMON or name.startswith(("test", "Test", "_")):

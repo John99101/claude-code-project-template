@@ -23,6 +23,13 @@ ENV_ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 MAX_SHOWN = 8
 
 
+def _rel(path, start):
+    try:
+        return os.path.relpath(path, start)
+    except ValueError:  # Windows: another drive
+        return os.path.abspath(path)
+
+
 def claude_md(proj):
     for rel in ("CLAUDE.md", os.path.join(".claude", "CLAUDE.md")):
         path = os.path.join(proj, rel)
@@ -126,7 +133,7 @@ def node_problem(runner, args, cwd, proj):
     if runner == "bun" and args[0] == "test":
         return None  # bun has a built-in test runner
     scripts = package_scripts(cwd)
-    rel = os.path.relpath(os.path.join(cwd, "package.json"), proj).replace(os.sep, "/")
+    rel = _rel(os.path.join(cwd, "package.json"), proj).replace(os.sep, "/")
     if scripts is None:
         return f"there's no {rel}"
     if script not in scripts:
@@ -151,7 +158,7 @@ def make_problem(args, cwd, proj):
         i += 1
     names = ("GNUmakefile", "makefile", "Makefile")
     path = next((os.path.join(folder, n) for n in names if os.path.isfile(os.path.join(folder, n))), None)
-    rel = os.path.relpath(folder, proj).replace(os.sep, "/")
+    rel = _rel(folder, proj).replace(os.sep, "/")
     if not path:
         return f"there's no Makefile in {'the project root' if rel == '.' else rel}"
     try:
@@ -242,7 +249,7 @@ def md_sources(proj):
     for imp in imports[:5]:
         full = os.path.normpath(os.path.join(os.path.dirname(path), imp))
         if os.path.isfile(full) and full.startswith(os.path.abspath(proj)):
-            sources.append((full, os.path.relpath(full, proj).replace(os.sep, "/")))
+            sources.append((full, _rel(full, proj).replace(os.sep, "/")))
     return sources
 
 
@@ -277,7 +284,7 @@ def spec_problems(cfg, proj):
         except OSError:
             continue
         m = re.search(r"^##\s+Acceptance criteria\s*$(.*?)(?=^##\s|\Z)", text, re.M | re.S | re.I)
-        rel = os.path.relpath(os.path.join(folder, name), proj).replace(os.sep, "/")
+        rel = _rel(os.path.join(folder, name), proj).replace(os.sep, "/")
         for path in SPEC_PATH.findall(m.group(1) if m else ""):
             if not os.path.exists(os.path.join(proj, path)):
                 found.append((path, rel, "the file no longer exists"))
