@@ -28,7 +28,8 @@ import merge_settings  # noqa: E402
 KIT = kitlib.KIT
 # Kept by the user once installed (setup fills them in); never replaced by --update.
 USER_OWNED = {"CLAUDE.md", ".mcp.json", ".claude/cct.json", "cct.json"}
-GITIGNORE_LINES = [".claude/settings.local.json", "CLAUDE.local.md", ".env", ".env.*", "!.env.example"]
+GITIGNORE_LINES = [".claude/settings.local.json", "CLAUDE.local.md", ".claude-handoff.md", ".env", ".env.*",
+                   "!.env.example"]
 # The kit's own development files, removed by --adopt from a "Use this template" copy.
 DEV_FILES = ["install.py", "install.sh", "install.ps1", "scripts", "templates", "rule-packs", "skills", "agents",
              "rules", "hooks", ".claude-plugin", "tests/test_kit.py", "tests/eval_setup.py",

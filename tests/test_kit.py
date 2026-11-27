@@ -562,6 +562,30 @@ class DoneGateTest(TempDirCase):
         self.assertEqual(self.stop(), {})
 
 
+    def test_files_placeholder_gets_the_changed_files(self):
+        self.git_project()
+        self.gate("open('got', 'w').write(repr(sys.argv[1:]))")
+        self.write_cct(format_on_edit=False, lint_on_edit=False,
+                       done_gate={"commands": [self.cmd("open('got', 'w').write(repr(sys.argv[1:]))") + " {files}"]})
+        self.edit("src/app.py")
+        self.assertEqual(self.stop(), {})
+        with open(self.p("got")) as f:
+            got = f.read()
+        self.assertIn("src/app.py", got)
+        self.assertNotIn("{files}", got)
+
+    def test_files_placeholder_without_changes_is_skipped(self):
+        self.git_project()
+        self.write_cct(format_on_edit=False, lint_on_edit=False,
+                       done_gate={"commands": [self.cmd("open('ran', 'w'); sys.exit(1)") + " {files}"]})
+        subprocess.run(["git", "add", "-A"], cwd=self.dir, check=True)
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "all"], cwd=self.dir,
+                       check=True)
+        r = self.check()
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("SKIP", r.stdout)
+        self.assertFalse(os.path.exists(self.p("ran")))
+
     def check(self):
         return subprocess.run([sys.executable, os.path.join(HOOKS, "done_gate.py"), "--check"],
                               capture_output=True, text=True, env=self.env, timeout=60)
@@ -680,6 +704,22 @@ class DriftCheckTest(TempDirCase):
         self.assertIn("doesn't exist", drift.problem("./scripts/missing.sh", self.dir))
         self.assertIn("doesn't exist", drift.problem("cd web && npm test", self.dir))
 
+    def test_quoted_paths_are_read_the_windows_way_too(self):
+        """Windows keeps quotes and backslashes in tokens; a quoted absolute path must still count as a path."""
+        sys.path.insert(0, HOOKS)
+        try:
+            import drift
+        finally:
+            sys.path.remove(HOOKS)
+        script = self.touch("cmds/check.py", "")
+        command = f'"{sys.executable}" "{script}"'
+        for posix in (True, False):
+            with self.subTest(posix=posix):
+                self.assertIsNone(drift.problem(command, self.dir, posix=posix))
+        self.assertEqual(drift.segments('"C:\\Program Files\\x.exe" -v', posix=False),
+                         [["C:\\Program Files\\x.exe", "-v"]])
+        self.assertIn("doesn't exist", drift.problem('"C:\\nope\\x.exe"', self.dir, posix=False) or "")
+
 
 class UpdateCheckTest(TempDirCase):
     def setUp(self):
@@ -735,6 +775,135 @@ class StatusLineTest(TempDirCase):
         line = self.status()
         self.assertIn("guard strict", line)
         self.assertIn("setup done", line)
+
+    def test_shows_the_session_cost(self):
+        payload = {"model": {"display_name": "Opus"}, "cost": {"total_cost_usd": 0.4213},
+                   "workspace": {"current_dir": self.dir, "project_dir": self.dir}}
+        self.assertIn("$0.42", self.hook("statusline.py", payload))
+        self.write_cct(statusline_cost=False)
+        self.assertNotIn("$", self.hook("statusline.py", payload))
+        self.assertNotIn("$", self.status(), "no cost in the payload, nothing shown")
+
+
+class EnvCheckTest(TempDirCase):
+    def setUp(self):
+        super().setUp()
+        self.env["PATH"] = self.p("fakebin")  # nothing real on PATH, so versions come from fake tools
+
+    def check(self):
+        return self.notice("session_start.py", {"source": "startup"})
+
+    def age(self, rel, seconds):
+        t = os.path.getmtime(self.p(*rel.split("/"))) - seconds
+        os.utime(self.p(*rel.split("/")), (t, t))
+
+    def test_node_dependencies_not_installed_or_stale(self):
+        self.touch("package.json", "{}")
+        self.touch("pnpm-lock.yaml", "lockfileVersion: 9\n")
+        self.assertIn("Run `pnpm install`", self.check())
+        self.touch("node_modules/.modules.yaml", "")
+        self.age("node_modules/.modules.yaml", 3600)
+        message = self.check()
+        self.assertIn("pnpm-lock.yaml changed since the last install", message)
+
+    def test_fresh_install_is_quiet(self):
+        self.touch("package.json", "{}")
+        self.touch("pnpm-lock.yaml", "")
+        self.age("pnpm-lock.yaml", 3600)
+        self.touch("node_modules/.modules.yaml", "")
+        self.assertEqual(self.check(), "")
+
+    def test_env_keys_are_named_but_values_never_shown(self):
+        self.touch(".env.example", "API_URL=\nexport API_TOKEN=\n# COMMENTED=\n")
+        self.touch(".env", "API_URL=https://secret.example/abc123\n")
+        message = self.check()
+        self.assertIn("API_TOKEN", message)
+        self.assertNotIn("API_URL", message)
+        self.assertNotIn("secret", message)
+        self.assertNotIn("COMMENTED", message)
+
+    def test_missing_env_file(self):
+        self.touch(".env.example", "API_TOKEN=\n")
+        self.assertIn("There's no .env", self.check())
+
+    def test_runtime_version_mismatch(self):
+        self.touch(".nvmrc", "v20\n")
+        self.fake_tool("node", "print('v18.19.0')\n")
+        self.assertIn("Node 20 is required (.nvmrc), but `node` is 18.19.0", self.check())
+
+    def test_matching_runtime_and_engines(self):
+        sys.path.insert(0, HOOKS)
+        try:
+            import env_check
+        finally:
+            sys.path.remove(HOOKS)
+        self.assertTrue(env_check.matches("20", "20.11.1"))
+        self.assertFalse(env_check.matches("20.11", "20.1.0"))
+        self.assertTrue(env_check.engines_ok(">=18", "20.0.0"))
+        self.assertFalse(env_check.engines_ok(">=20.10", "20.9.0"))
+        self.assertTrue(env_check.engines_ok("^20 || ^22", "18.0.0"), "complex ranges aren't judged")
+
+    def test_can_be_disabled(self):
+        self.touch(".env.example", "API_TOKEN=\n")
+        self.write_cct(env_check=False)
+        self.assertEqual(self.check(), "")
+
+
+class TeamNoticeTest(TempDirCase):
+    def git(self, *args, author=None):
+        cmd = ["git", "-c", "user.name=Me", "-c", "user.email=me@example.com", "commit", "-qm", "x"]
+        if args:
+            cmd = ["git", *args]
+        if author:
+            cmd = cmd + [f"--author={author}"]
+        subprocess.run(cmd, cwd=self.dir, check=True, capture_output=True)
+
+    def commit(self, rel, content, author=None):
+        self.touch(rel, content)
+        self.git("add", rel)
+        self.git(author=author)
+
+    def setUp(self):
+        super().setUp()
+        self.git("init", "-q")
+        self.git("config", "user.email", "me@example.com")
+        self.commit("README.md", "x\n")
+
+    def start(self):
+        return self.notice("session_start.py", {"source": "startup"})
+
+    def test_teammate_changes_are_listed(self):
+        self.assertEqual(self.start(), "", "the first session only records where you are")
+        self.commit("CLAUDE.md", "# app\n", author="Alex <alex@example.com>")
+        self.commit(".claude/rules/testing.md", "x\n", author="Sam <sam@example.com>")
+        self.commit("src/app.py", "x\n", author="Alex <alex@example.com>")
+        message = self.start()
+        self.assertIn("Alex, Sam", message)
+        self.assertIn("CLAUDE.md", message)
+        self.assertIn(".claude/rules/testing.md", message)
+        self.assertNotIn("src/app.py", message)
+        self.assertIn("git diff", message)
+        self.assertEqual(self.start(), "")
+
+    def test_own_changes_are_not_listed(self):
+        self.start()
+        self.commit("CLAUDE.md", "# app\n")
+        self.assertEqual(self.start(), "")
+
+    def test_can_be_disabled(self):
+        self.start()
+        self.commit("CLAUDE.md", "# app\n", author="Alex <alex@example.com>")
+        self.write_cct(team_notice=False)
+        self.assertEqual(self.start(), "")
+
+
+class HandoffNoticeTest(TempDirCase):
+    def test_a_waiting_handoff_is_announced_once(self):
+        self.touch(".claude-handoff.md", "# Handoff\n")
+        message = self.notice("session_start.py", {"source": "startup"})
+        self.assertIn(".claude-handoff.md", message)
+        self.assertIn("/handoff resume", message)
+        self.assertEqual(self.notice("session_start.py", {"source": "startup"}), "")
 
 
 class DeviceProjectDedupTest(TempDirCase):
@@ -1149,7 +1318,7 @@ class FormatTest(unittest.TestCase):
                         self.assertRegex(front, rf"(?m)^name:\s*{folder}\s*$", "skill name must match its folder")
 
     def test_workflow_skills_are_manual_only(self):
-        for name in ["check", "commit", "review-changes", "template-update"]:
+        for name in ["check", "commit", "review-changes", "template-update", "pr", "start-issue", "handoff"]:
             with self.subTest(skill=name):
                 front = self.frontmatter(os.path.join(ROOT, "skills", name, "SKILL.md"))
                 self.assertRegex(front, r"(?m)^disable-model-invocation:\s*true")

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Status line: model · folder (branch) · guard level · setup state.
+"""Status line: model · folder (branch) · session cost · guard level · setup state.
 
-Registered as "statusLine" in settings.json. Claude Code passes session info as JSON on stdin.
+Registered as "statusLine" in settings.json. Claude Code passes session info as JSON on stdin, including the session's
+cost as it estimates it (cost.total_cost_usd). Hide the cost with cct.json "statusline_cost": false.
 """
 import json
 import os
@@ -34,6 +35,9 @@ def main():
     except (OSError, subprocess.SubprocessError):
         branch = ""
     parts.append(f"{folder} ({branch})" if branch else folder)
+    cost = (info.get("cost") or {}).get("total_cost_usd")
+    if cfg.get("statusline_cost", True) and isinstance(cost, (int, float)) and not isinstance(cost, bool):
+        parts.append(f"${cost:.2f}" if cost < 100 else f"${cost:.0f}")
     parts.append(f"guard {cfg.get('guard_level', 'standard')}")
 
     pending = (os.path.exists(os.path.join(proj, ".claude", "cct-pending"))

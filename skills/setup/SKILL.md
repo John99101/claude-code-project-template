@@ -100,7 +100,7 @@ Show a short plan: each file to create or change, with the key values (commands,
 - `~/.claude/cct.json`: `update_check` from the update-notice answer (personal, so it goes here, not into the shared project file). Merge it into the file; don't drop other keys.
 - `.mcp.json`: add the chosen servers from [mcp-catalog.json](mcp-catalog.json), copying only each entry's `config` object under `mcpServers.<name>`. The catalog is checked weekly, but if unsure, check the vendor's docs. List every env var the user must set.
 - `.claude/agents/*.md`: set `model:` per the user's answers. Remove agents they don't want.
-- `.gitignore`: make sure `.claude/settings.local.json`, `CLAUDE.local.md`, `.env` and `.env.*` (but not `.env.example`) are ignored.
+- `.gitignore`: make sure `.claude/settings.local.json`, `CLAUDE.local.md`, `.claude-handoff.md`, `.env` and `.env.*` (but not `.env.example`) are ignored.
 
 ### 5b. Monorepos
 

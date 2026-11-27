@@ -1,25 +1,32 @@
 #!/usr/bin/env python3
-"""SessionStart hook: tells the user when setup is unfinished, when commands in the config have drifted, and (opt-in)
-when a newer kit release exists.
+"""SessionStart hook: tells the user what needs attention before work starts.
+
+- setup isn't finished (setup_reminder)
+- commands in CLAUDE.md or done_gate no longer fit the project (drift_check, drift.py)
+- stale installs, missing .env keys, wrong runtime versions (env_check, env_check.py)
+- teammates changed the Claude config since the last session (team_notice, team_notice.py)
+- a handoff note from an earlier session is waiting (.claude-handoff.md, written by /handoff)
+- a newer kit release is out (update_check, update_check.py; off by default)
 
 Everything here goes to the user as a systemMessage, which Claude never sees, so it uses no credits. Nothing is
-printed when there is nothing to say, and nothing is shown after /clear or compaction.
-Turn off with cct.json "setup_reminder": false, "drift_check": false and "update_check": false.
+printed when there is nothing to say, and nothing is shown after /clear or compaction. Each notice repeats at most
+weekly while nothing changes.
 """
-import hashlib
+import datetime
 import os
 import subprocess
 import sys
-import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from cct_config import (defer_to_project, home_claude, is_device_copy, load_config, notify,  # noqa: E402
-                        project_dir, prune_state, read_input, read_state, setup_command, state_path, write_state)
+from cct_config import (defer_to_project, home_claude, is_device_copy, load_config, notify, once,  # noqa: E402
+                        project_dir, prune_state, read_input, setup_command)
 from done_gate import record_baseline  # noqa: E402
 import drift  # noqa: E402
+import env_check  # noqa: E402
+import team_notice  # noqa: E402
 import update_check  # noqa: E402
 
-DRIFT_REPEAT_DAYS = 7
+HANDOFF = ".claude-handoff.md"  # not in .claude/, where Claude Code asks before every write
 
 SOURCE_REPO = "claude-code-project-template"
 PROJECT_SIGNS = [".git", "package.json", "pyproject.toml", "requirements.txt", "go.mod", "Cargo.toml",
@@ -84,19 +91,26 @@ def setup_reminder(proj):
 def drift_notice(cfg, proj):
     """Drifted commands, shown when the list changes and again after a week while it stays."""
     found = drift.find_drift(cfg, proj)
-    path = state_path("drift", os.path.abspath(proj))
-    if not found:
-        if read_state(path):
-            write_state(path, {})
+    return once("drift", os.path.abspath(proj), drift.message(found) if found else None)
+
+
+def handoff_notice(proj):
+    path = os.path.join(proj, HANDOFF)
+    try:
+        written = datetime.datetime.fromtimestamp(os.path.getmtime(path)).strftime("%Y-%m-%d %H:%M")
+    except OSError:
+        return once("handoff", os.path.abspath(proj), None)
+    return once("handoff", os.path.abspath(proj),
+                f"[cct] There's a handoff note from {written} in {HANDOFF}. "
+                f"Run /handoff resume to pick up where you left off.")
+
+
+def safe(check, *args):
+    """A notice must never break session start."""
+    try:
+        return check(*args)
+    except Exception:  # noqa: BLE001
         return None
-    text = drift.message(found)
-    digest = hashlib.sha256(text.encode()).hexdigest()
-    state = read_state(path)
-    now = time.time()
-    if state.get("shown") == digest and now - float(state.get("at", 0) or 0) < DRIFT_REPEAT_DAYS * 86400:
-        return None
-    write_state(path, {"shown": digest, "at": now})
-    return text
 
 
 def main():
@@ -116,9 +130,16 @@ def main():
         pending = setup_reminder(proj)
         messages.append(pending)
     setup_unfinished = os.path.exists(os.path.join(proj, ".claude", "cct-pending"))
-    if cfg.get("drift_check", True) and not setup_unfinished and not pending:
-        messages.append(drift_notice(cfg, proj))
-    messages.append(update_check.notice(__file__, cfg))
+    if not setup_unfinished and not pending:
+        if cfg.get("drift_check", True):
+            messages.append(safe(drift_notice, cfg, proj))
+        if cfg.get("env_check", True):
+            problems = safe(env_check.find_problems, proj)
+            messages.append(once("env", os.path.abspath(proj), env_check.message(problems) if problems else None))
+        if cfg.get("team_notice", True):
+            messages.append(safe(team_notice.notice, proj))
+        messages.append(safe(handoff_notice, proj))
+    messages.append(safe(update_check.notice, __file__, cfg))
     notify(*messages)
 
 

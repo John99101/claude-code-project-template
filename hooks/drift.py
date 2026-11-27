@@ -17,7 +17,7 @@ SECTIONS = ("commands", "before you say a task is done")
 SEPARATORS = {"&&", "||", ";", "|", "&"}
 NODE_RUNNERS = {"npm", "pnpm", "yarn", "bun"}
 SKIP = {"cd", "export", "env", "sudo", "time", "exec", "source", ".", "echo", "true", "false", "test", "["}
-PATH_PREFIX = re.compile(r"^(\.{1,2}/|/|[A-Za-z]:[\\/])")
+PATH_PREFIX = re.compile(r"^(\.{1,2}[\\/]|/|[A-Za-z]:[\\/])")
 ENV_ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 MAX_SHOWN = 8
 
@@ -55,14 +55,25 @@ def md_commands(path):
     return found
 
 
-def segments(command):
-    """The simple commands in a command line, as token lists, or None if it can't be judged statically."""
+def unquote(token):
+    """Windows-style splitting keeps the quotes around a token, e.g. "C:\\Program Files\\x.exe"."""
+    if len(token) >= 2 and token[0] == token[-1] and token[0] in "\"'":
+        return token[1:-1]
+    return token
+
+
+def segments(command, posix=None):
+    """The simple commands in a command line, as token lists, or None if it can't be judged statically.
+    On Windows, backslashes are path separators, not escapes, so the command is split the Windows way."""
     if any(s in command for s in ("$(", "`", "${", "<(")):
         return None
+    posix = os.name != "nt" if posix is None else posix
     try:
-        tokens = shlex.split(command, posix=os.name != "nt")
+        tokens = shlex.split(command, posix=posix)
     except ValueError:
         return None
+    if not posix:
+        tokens = [unquote(t) for t in tokens]
     out, current = [], []
     for t in tokens:
         if t in SEPARATORS:
@@ -176,9 +187,9 @@ def just_problem(args, cwd):
     return None
 
 
-def problem(command, proj):
+def problem(command, proj, posix=None):
     """Why `command` no longer fits the project, or None."""
-    parts = segments(command)
+    parts = segments(command, posix)
     if parts is None:
         return None
     cwd = proj
@@ -196,7 +207,7 @@ def problem(command, proj):
             continue
         if name in SKIP:
             continue
-        if PATH_PREFIX.match(name) or ("/" in name and not name.startswith("@")):
+        if PATH_PREFIX.match(name) or (("/" in name or "\\" in name) and not name.startswith("@")):
             if not os.path.exists(os.path.join(cwd, name)):
                 return f"`{name}` doesn't exist"
             continue
