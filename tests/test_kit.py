@@ -680,6 +680,23 @@ class DriftCheckTest(TempDirCase):
         self.assertIn("doesn't exist", drift.problem("./scripts/missing.sh", self.dir))
         self.assertIn("doesn't exist", drift.problem("cd web && npm test", self.dir))
 
+    def test_quoted_paths_are_read_the_windows_way_too(self):
+        """Windows keeps quotes and backslashes in tokens; a quoted absolute path must still count as a path."""
+        sys.path.insert(0, HOOKS)
+        try:
+            import drift
+        finally:
+            sys.path.remove(HOOKS)
+        script = self.touch("cmds/check.py", "")
+        command = f'"{sys.executable}" "{script}"'
+        for posix in (True, False):
+            with self.subTest(posix=posix):
+                self.assertIsNone(drift.problem(command, self.dir, posix=posix))
+        self.assertEqual(drift.segments('"C:\\Program Files\\x.exe" -v', posix=False),
+                         [["C:\\Program Files\\x.exe", "-v"]])
+        self.assertIn("doesn't exist", drift.problem('"C:\\nope\\x.exe"', self.dir, posix=False) or "")
+
+
 
 class UpdateCheckTest(TempDirCase):
     def setUp(self):
