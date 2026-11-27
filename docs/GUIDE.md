@@ -99,6 +99,9 @@ Tested rules for **Python, TypeScript/JavaScript, Go, Rust and Java/Kotlin**: id
 | `/commit` | Shows live status and recent log, writes a message in the project's style, commits. Never pushes. |
 | `/pr` | Pushes the branch and opens a pull request (GitLab: merge request) using the repo's PR template: summary, linked issues, and a test plan that ticks only the checks that actually ran. Shows the draft first. Never merges. |
 | `/pin` | Pins a constraint for the current task in `.claude-pins.md` (gitignored): free text like "don't change the public API", or `never edit: <globs>` / `only edit: <globs>`. Pins go back into Claude's context at every session start and after compaction, and the file guard blocks edits that break a path pin. `/pin list`, `/pin remove <n>`, `/pin clear`. |
+| `/spec <feature>` | Writes `specs/<feature>.md` (goal, Given/When/Then behaviour, acceptance criteria, non-goals, open questions), waits for your OK, then builds test-first against it. `/pr` repeats the criteria with their state, and the drift check flags criteria that name files that no longer exist. Folder: `spec_dir`. |
+| `/tidy [path]` | Proposes 3–7 small, behaviour-preserving cleanups for the code you just changed (duplication, names, nesting, dead code), applies the ones you pick one at a time with tests in between, and commits each as `tidy: …`, separate from feature work. |
+| `/learn on\|off` | Learning mode, stored between markers in `CLAUDE.local.md` (or `~/.claude/CLAUDE.md` with `everywhere`): Claude explains the concept behind each change, lets you guess a bug's cause first, leaves one or two `TODO(you)` parts, and ends a task with one question. Costs a little more per turn. |
 | `/handoff` | Writes `.claude-handoff.md`: goal, what's done, what's in progress, decisions, open questions, next steps. The next session shows a notice; `/handoff resume` picks it up. The file is personal and gitignored. |
 | `/template-update` | Updates the kit from GitHub, keeping your customisations (see [§11](#11-updating-customising-and-removing)). |
 
@@ -134,6 +137,7 @@ Agents run in a **separate context window**, so a long exploration or review doe
 | `guard_bash.py` | Before every shell command | Blocks destructive commands, asks before risky ones (see [§7](#7-the-safety-model)) |
 | `protect_files.py` | Before every file edit | Blocks edits to secrets and git internals; asks before lockfiles and CI |
 | `format_file.py` | After every file edit | Formats the file with *your project's* formatter, then lints it. **Lint problems go straight back to Claude**, which fixes them before moving on instead of finding them later at `/check`. To keep credits in check, a file that still has problems after `lint_max_repeats` reports in a row (default 3) isn't reported again in that session, and you're told. If the project configures a formatter or linter that isn't installed, you're told once per session instead of the step being skipped silently. |
+| `batch_check.py` | When Claude finishes a turn | When uncommitted changes pass `batch_max_lines` (300; lockfiles, snapshots and generated files excluded), tells you to commit the finished part. With `"batch_nudge": "claude"`, Claude is told too and proposes a commit point. `--size [base]` prints the count `/pr` uses. |
 | `claim_check.py` | When Claude finishes a turn | If the final reply claims tests pass, a build works or something was verified, but no test, lint, build or type-check command ran in that turn, sends Claude back once to run it or correct the claim. |
 | `done_gate.py` | When Claude finishes a turn | Off until `done_gate.commands` is set. If Claude changed files in the turn, runs those commands (your done checklist) and **sends a failure back to Claude**, which keeps working instead of saying it's done. See [the done gate](#the-done-gate) below. |
 | `statusline.py` | Status line | `Opus · my-app (main) · $0.42 · guard standard · setup done`. The cost is Claude Code's own estimate for the session; hide it with `"statusline_cost": false`. |
@@ -164,6 +168,14 @@ Models sometimes invent package names that sound right, and the same invented na
 - **After an edit** (`format_file.py`): imports this edit added that no `package.json`, `pyproject.toml` or `requirements*.txt` declares are pointed out to Claude, so a made-up import is caught even when nothing gets installed.
 
 Both are on by default; `"dependency_check": false` turns them off.
+
+#### Test guard
+
+Agents under pressure to get a green run sometimes weaken the test instead of fixing the code (Kent Beck calls it the genie cheating). `protect_files.py` asks before an edit to a test file that adds a skip or disable marker (`@pytest.mark.skip`, `it.skip`, `xit`, `t.Skip`, `#[ignore]`, `@Disabled`, RSpec `skip`), removes test cases, removes assertions without adding any, or only changes the expected value of an assertion. `guard_bash.py` asks before `rm` or `git rm` of test files, and the claim check sends Claude back when it says tests pass in a turn that added a skip. With `guard_level: strict` these edits are blocked. For test-first work, `/pin tests are the spec` makes the test folders read-only. `"test_guard": false` turns it off.
+
+#### The lethal trifecta
+
+Simon Willison's warning: an agent that can read private data, read content an attacker controls, and send data out can be steered by a prompt injection into leaking that data. The kit sorts your MCP servers (`.mcp.json`, `~/.claude.json`; the catalog's `trifecta` field, or the server name) and allowed tools (`WebFetch`, `Bash(curl:*)`, `Bash(gh:*)`…) into those three legs. When all three are present, session start tells you which ones, with fixes: read-only, non-production credentials for data servers, web and browser servers only when needed, fewer outbound permissions. While it's active, commands that send data out (`curl -d`/`-X POST`, `wget --post-data`, `gh api` writes, `nc`, `scp` to a host) need your OK. Setup runs the same check before writing `.mcp.json`. The repo's own code isn't counted as private data. `"trifecta_check": false` turns it off.
 
 #### Pins
 
@@ -308,6 +320,11 @@ The guard reads commands the way a shell does. It understands quotes (so `git co
 | `duplicate_hints` | `true` | Point out new functions that already exist elsewhere |
 | `agent_files` | `[]` | Instruction files generated from `AGENTS.md`: `copilot`, `cursor`, `gemini` |
 | `team_platforms` | `[]` | Systems the team uses, e.g. `["linux", "windows"]`. With `windows`, the portability check runs. |
+| `test_guard` | `true` | Ask before edits that skip, delete or loosen tests |
+| `trifecta_check` | `true` | Warn about private data + untrusted content + outbound access together, and ask before outbound commands then |
+| `batch_max_lines` | `300` | Uncommitted lines before a "commit or split" notice. `0` turns it off. |
+| `batch_nudge` | `"user"` | `"claude"` also tells Claude, so it proposes a commit point (costs a little) |
+| `spec_dir` | `"specs/"` | Where `/spec` writes specs |
 | `pr_max_lines` | `400` | `/pr` suggests splitting a bigger diff |
 | `update_check` | `false` | Weekly check of the kit's latest GitHub release, with a notice when it's newer. Script installs only; set it in `~/.claude/cct.json`. |
 | `done_gate` | `{"commands": [], "timeout": 120, "attempts": 3}` | Commands that must pass before Claude finishes a turn that changed files. Empty turns it off. Uses credits when a check fails. See [the done gate](#the-done-gate). |

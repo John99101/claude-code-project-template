@@ -4,6 +4,7 @@
 Agents often announce "all tests pass" or "verified" without having run anything. When Claude is about to finish,
 this reads the session transcript: if the final reply makes such a claim but no test, lint, build or type-check
 command ran since the user's last message, Claude is sent back once to run the check or correct the claim.
+A claim is also unbacked when the turn added a skip marker to a test (test_guard.py): a skipped test isn't a passing one.
 At most once per turn, so it costs a little only when it catches something. Turn off with cct.json "claim_check": false.
 """
 import json
@@ -13,6 +14,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cct_config import defer_to_project, load_config, read_input  # noqa: E402
+import test_guard  # noqa: E402
 
 CLAIM = re.compile(
     r"\b(?:all (?:the )?(?:\d+ )?tests (?:now )?pass(?:ed)?"
@@ -78,6 +80,25 @@ def ran_a_check(turn):
     return False
 
 
+def skipped_tests(turn):
+    """Test files this turn added a skip marker to."""
+    found = []
+    for entry in turn:
+        if not isinstance(entry, dict) or entry.get("type") != "assistant":
+            continue
+        for b in content_blocks(entry):
+            if not (isinstance(b, dict) and b.get("type") == "tool_use" and b.get("name") in ("Edit", "Write", "MultiEdit")):
+                continue
+            tool_input = b.get("input") or {}
+            path = str(tool_input.get("file_path") or "")
+            edits = tool_input.get("edits") if isinstance(tool_input.get("edits"), list) else [tool_input]
+            old = "\n".join(str(e.get("old_string") or "") for e in edits if isinstance(e, dict))
+            new = "\n".join(str(e.get("new_string") or e.get("content") or "") for e in edits if isinstance(e, dict))
+            if test_guard.is_test_path(path) and test_guard.added_skip(old, new):
+                found.append(os.path.basename(path))
+    return found
+
+
 def unbacked_claim(text):
     """The first sentence that claims a passing check without hedging, or None."""
     for sentence in re.split(r"(?<=[.!?])\s+|\n+", text):
@@ -96,7 +117,18 @@ def main():
         return  # once per turn: after being sent back, Claude may finish
     turn = this_turn(payload.get("transcript_path") or "")
     claim = unbacked_claim(final_text(turn))
-    if not claim or ran_a_check(turn):
+    if not claim:
+        return
+    skipped = skipped_tests(turn)
+    if skipped:
+        print(json.dumps({
+            "decision": "block",
+            "reason": (f"cct claim check: your reply says \"{claim}\", but this turn added a skip to "
+                       f"{', '.join(sorted(set(skipped)))}. A skipped test isn't a passing one: say plainly which tests "
+                       f"are skipped and why, or fix the code and remove the skip."),
+        }))
+        return
+    if ran_a_check(turn):
         return
     print(json.dumps({
         "decision": "block",

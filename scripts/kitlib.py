@@ -9,7 +9,7 @@ from pathlib import Path
 KIT = Path(__file__).resolve().parent.parent
 REPO = "John99101/claude-code-project-template"
 KIT_SCRIPTS = ("session_start.py", "guard_bash.py", "deps_guard.py", "protect_files.py", "format_file.py", "done_gate.py",
-               "claim_check.py", "statusline.py")
+               "claim_check.py", "batch_check.py", "statusline.py")
 _VERSION_CHECK = "import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)"
 
 

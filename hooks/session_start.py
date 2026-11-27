@@ -8,6 +8,7 @@
 - a handoff note from an earlier session is waiting (.claude-handoff.md, written by /handoff)
 - AGENTS.md and other tools' instruction files disagree, or CLAUDE.md doesn't import it (agent_files.py)
 - the shared config breaks on another platform the team uses (team_platforms, portability.py)
+- the setup combines private data, untrusted content and a way to send data out (trifecta.py)
 - a newer kit release is out (update_check, update_check.py; off by default)
 
 Everything above goes to the user as a systemMessage, which Claude never sees, so it uses no credits. Nothing is
@@ -31,6 +32,7 @@ import drift  # noqa: E402
 import env_check  # noqa: E402
 import pins  # noqa: E402
 import portability  # noqa: E402
+import trifecta  # noqa: E402
 import team_notice  # noqa: E402
 import update_check  # noqa: E402
 
@@ -155,6 +157,9 @@ def main():
         script = "python3 " + (script if not script.startswith("..") else os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "agent_files.py")).replace(os.sep, "/")
         messages.append(once("agents", os.path.abspath(proj), agent_files.message(found, script) if found else None))
+        if cfg.get("trifecta_check", True):
+            found = safe(trifecta.active, proj, os.path.dirname(os.path.abspath(__file__)))
+            messages.append(once("trifecta", os.path.abspath(proj), trifecta.message(found) if found else None))
         found = safe(portability.find_problems, cfg, proj)
         messages.append(once("portability", os.path.abspath(proj), portability.message(found) if found else None))
     if pinned:

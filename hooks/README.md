@@ -9,11 +9,14 @@ Event-driven scripts registered in `.claude/settings.json`. They need `python3` 
 | `guard_bash.py` | `PreToolUse` · `Bash\|PowerShell` | Blocks destructive commands (`rm -rf /`, `find / -delete`, `mkfs`, force-push or deleting `main`, `curl … \| sh`), including when they're hidden in `sh -c`, `eval`, `$(…)` or backticks. Asks before risky ones (`rm -r`, `git reset --hard`, `sudo`, `DROP TABLE`, publishing). |
 | `protect_files.py` | `PreToolUse` · `Edit\|Write` | Blocks writes to `.env`, keys, `secrets/`, `.git/`, your `protected_paths` and paths your `/pin`s rule out. Asks before editing lockfiles or CI workflows. |
 | `format_file.py` | `PostToolUse` · `Edit\|Write` | Formats the edited file with the project's formatter (prettier, biome, ruff, black, gofmt, rustfmt, shfmt), then lints it (eslint, biome, ruff, shellcheck, golangci-lint or go vet, cargo clippy) and **sends problems back to Claude** to fix right away. Go and Rust linters check the whole package or crate, but only problems in the edited file are reported. A file that still has problems after `lint_max_repeats` reports in a row (default 3) stops being reported for the session, and you're told. When the project configures a tool that isn't installed, tells you once per session. Never downloads anything. |
+| `batch_check.py` | `Stop` | Tells you when uncommitted changes pass `batch_max_lines` (300), so work stays in small, reviewable batches. `--size [base]` prints the count. |
 | `claim_check.py` | `Stop` | Sends Claude back once when its final reply claims tests pass or something was verified, but no check ran in that turn. |
 | `done_gate.py` | `Stop` | Off until `done_gate.commands` is set in `cct.json`. A command may use `{files}` for the changed files, to run only related tests. `python3 done_gate.py --check` runs the commands once and reports each, without Claude. When Claude finishes a turn that changed files (Edit/Write, or any git working-tree change, so shell edits count too), runs those commands and **blocks finishing** while one fails, sending the output tail back. Lets Claude finish when it changes nothing after being blocked, after `attempts` tries, or when the commands exceed `timeout`. |
 | `statusline.py` | `statusLine` | Shows `model · folder (branch) · session cost · guard level · setup state`. |
 | `cct_config.py` | — | Shared helper: loads `cct.json`, user-only notices, state files, and makes device-wide hooks step aside when the project has its own copy. |
 | `drift.py`, `env_check.py`, `team_notice.py`, `update_check.py`, `portability.py`, `pins.py` | — | Helpers for `session_start.py` (and `pins.py` for `protect_files.py`). |
+| `test_guard.py` | — | Spots edits that weaken tests; used by `protect_files.py`, `guard_bash.py` and `claim_check.py`. |
+| `trifecta.py` | — | Sorts MCP servers and allowed tools into private data, untrusted content and outbound access; used by `session_start.py` and `guard_bash.py`. |
 | `code_hints.py` | — | Helper for `format_file.py`: undeclared imports and duplicate functions in an edit. |
 | `agent_files.py` | — | Generates other AI tools' instruction files from `AGENTS.md`; `--check` for CI, `--write` to update. |
 
@@ -41,6 +44,11 @@ Change behaviour in `.claude/cct.json` (project) or `~/.claude/cct.json` (all pr
   "agent_files": [],
   "team_platforms": [],
   "pr_max_lines": 400,
+  "test_guard": true,
+  "trifecta_check": true,
+  "batch_max_lines": 300,
+  "batch_nudge": "user",
+  "spec_dir": "specs/",
   "update_check": false
 }
 ```

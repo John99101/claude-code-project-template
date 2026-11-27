@@ -5,7 +5,8 @@ only, so a command it can't judge (shell variables, workspace filters, package-m
 result goes to the user only, never to Claude, so it uses no credits.
 
 Checked: the done_gate commands in cct.json, and the backticked commands in CLAUDE.md's "Commands" table and
-"Before you say a task is done" section, including files CLAUDE.md imports with a line like `@AGENTS.md`. Turn off with cct.json "drift_check": false.
+"Before you say a task is done" section, including files CLAUDE.md imports with a line like `@AGENTS.md`. Also the
+files named in the acceptance criteria of specs written by /spec ("spec_dir", default specs/). Turn off with cct.json "drift_check": false.
 """
 import json
 import os
@@ -258,10 +259,35 @@ def commands_to_check(cfg, proj):
     return to_check
 
 
+SPEC_PATH = re.compile(r"`([\w.@-]+(?:/[\w.@-]+)+|[\w-]+\.[A-Za-z]{1,5})`")
+
+
+def spec_problems(cfg, proj):
+    """[(path, spec, why)] for files named in specs' acceptance criteria that no longer exist."""
+    folder = os.path.join(proj, str(cfg.get("spec_dir") or "specs/"))
+    try:
+        names = sorted(n for n in os.listdir(folder) if n.endswith(".md"))
+    except OSError:
+        return []
+    found = []
+    for name in names[:50]:
+        try:
+            with open(os.path.join(folder, name), encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        except OSError:
+            continue
+        m = re.search(r"^##\s+Acceptance criteria\s*$(.*?)(?=^##\s|\Z)", text, re.M | re.S | re.I)
+        rel = os.path.relpath(os.path.join(folder, name), proj).replace(os.sep, "/")
+        for path in SPEC_PATH.findall(m.group(1) if m else ""):
+            if not os.path.exists(os.path.join(proj, path)):
+                found.append((path, rel, "the file no longer exists"))
+    return found
+
+
 def find_drift(cfg, proj):
-    """[(command, where it's written, why it drifted)]."""
+    """[(command or path, where it's written, why it drifted)]."""
     to_check = commands_to_check(cfg, proj)
-    seen, found = set(), []
+    seen, found = set(), list(spec_problems(cfg, proj))
     for command, where in to_check:
         if command in seen:
             continue
@@ -276,6 +302,6 @@ def message(found):
     lines = [f"- `{c}` in {where}: {why}" for c, where, why in found[:MAX_SHOWN]]
     if len(found) > MAX_SHOWN:
         lines.append(f"- … and {len(found) - MAX_SHOWN} more")
-    return ("[cct] Some commands in your Claude config no longer match this project:\n" + "\n".join(lines)
+    return ("[cct] Some commands and paths in your Claude config or specs no longer match this project:\n" + "\n".join(lines)
             + "\nFix them in the file, or run /setup to re-tune. Turn this check off with \"drift_check\": false "
               "in .claude/cct.json.")

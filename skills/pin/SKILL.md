@@ -19,6 +19,7 @@ Pins live in `.claude-pins.md` in the project root (personal, gitignored). The k
   - The only area to work in: `- only edit: src/billing/**, tests/billing/**`
   - Anything else, in the user's words, as a short instruction: `- Don't change the public API.`
   Use project-relative globs; a folder is `dir/`. If one request holds several constraints, write one line each.
+  - **"tests are the spec"** (test-first work): find the project's test locations (`tests/`, `__tests__/`, `*_test.go`, `*.test.ts`…) and pin them read-only as `- never edit: <those globs>`, plus the reminder `- The tests define the behaviour: change the code, not the tests.`
 - If `.gitignore` doesn't cover `.claude-pins.md`, add that line.
 
 Then show the pins and confirm in one line that they're in force. From now on, follow every pin until it's removed. If the task can't be done without breaking one, stop and ask the user instead of working around it.

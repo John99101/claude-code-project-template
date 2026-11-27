@@ -30,6 +30,11 @@ DEFAULTS = {
     "agent_files": [],              # other tools' instruction files generated from AGENTS.md: copilot, cursor, gemini
     "team_platforms": [],           # e.g. ["linux", "macos", "windows"]: with windows, check commands and scripts
     "pr_max_lines": 400,            # /pr suggests splitting bigger diffs
+    "test_guard": True,             # ask before edits that skip, delete or loosen tests
+    "trifecta_check": True,         # warn about private data + untrusted content + outbound access together
+    "batch_max_lines": 300,         # uncommitted lines before a "commit or split" notice (0: off)
+    "batch_nudge": "user",          # "user": notice only; "claude": Claude is told too (costs a little)
+    "spec_dir": "specs/",           # where /spec writes specs; the drift check looks there
     "done_gate": {"commands": [], "timeout": 120, "attempts": 3},  # checks run before Claude finishes
 }
 STATE_DAYS = 7  # state files untouched for this long are deleted

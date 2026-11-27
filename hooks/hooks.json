@@ -34,7 +34,8 @@
       {
         "hooks": [
           { "type": "command", "command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/done_gate.py"], "timeout": 600 },
-          { "type": "command", "command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/claim_check.py"], "timeout": 10 }
+          { "type": "command", "command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/claim_check.py"], "timeout": 10 },
+          { "type": "command", "command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/batch_check.py"], "timeout": 15 }
         ]
       }
     ]
