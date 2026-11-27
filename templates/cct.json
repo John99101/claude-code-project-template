@@ -10,5 +10,17 @@
   "env_check": true,
   "team_notice": true,
   "statusline_cost": true,
+  "dependency_check": true,
+  "dependency_min_age_days": 30,
+  "claim_check": true,
+  "duplicate_hints": true,
+  "agent_files": [],
+  "team_platforms": [],
+  "pr_max_lines": 400,
+  "test_guard": true,
+  "trifecta_check": true,
+  "batch_max_lines": 300,
+  "batch_nudge": "user",
+  "spec_dir": "specs/",
   "done_gate": { "commands": [], "timeout": 120, "attempts": 3 }
 }

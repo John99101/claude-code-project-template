@@ -37,6 +37,15 @@ Claude Code can learn all of this through `CLAUDE.md`, rules, settings, hooks, s
 | "Done!" … and the tests fail | The **done gate** runs your checks before Claude finishes, and only the tests related to the change |
 | Lint errors show up in CI an hour later | Every edited file is **formatted and linted**, and problems go straight back to Claude |
 | One `rm -rf` or force-push away from a bad day | A **guard** blocks destructive commands and secret-file edits, and asks before risky ones |
+| Claude installs a package whose name it made up | The **dependency check** blocks names that don't exist on npm, PyPI or crates.io, and asks before brand-new ones |
+| "All tests pass!" … but nothing ran | The **claim check** sends Claude back when it claims a check it never ran |
+| "Don't touch the API" is forgotten after compaction | **`/pin`** keeps it in Claude's context and the guard enforces path pins |
+| Claude rewrites a helper you already have | **Duplicate hints** point it to the existing function |
+| Cursor, Copilot and Claude follow different instructions | **One `AGENTS.md`** feeds every tool; generated copies can't drift |
+| Commands and hooks break for the Windows half of the team | The **portability check** flags POSIX-only commands, backslash paths and CRLF scripts |
+| Claude makes a failing test pass by skipping it | The **test guard** asks before skips, deleted tests, removed assertions or changed expected values |
+| Database + web browsing + `curl` in one session: one poisoned page away from a leak | The **trifecta check** warns about the combination and asks before data leaves the machine |
+| A 2,000-line change nobody can review | The **small-batch nudge** says when to commit, before it gets that big |
 | A teammate changes the rules and nobody notices | **Session notices** flag teammates' config changes, stale installs, missing `.env` keys and outdated commands |
 | Every new repo starts from zero | Your answers are **remembered**, so the next project only asks what's new |
 
@@ -122,8 +131,12 @@ Quick setup asks about ten questions; Thorough asks about 25. Monorepos get a sh
 | `/check` | Lint, type check and tests, then fixes what recent changes broke |
 | `/review-changes` | Reviews your diff with a reviewer agent (and a security auditor when it matters) |
 | `/commit` | Commits in your project's message style |
-| `/pr` | Pushes and opens a pull request from your template, with a test plan that ticks only the checks that really ran |
+| `/pr` | Opens a review-ready pull request: suggests a split when it's too big, ticks only checks that really ran, and tells the reviewer its assumptions, what's untested and where to look first |
 | `/handoff` | Saves where a task stands, so tomorrow's session (`/handoff resume`) picks up exactly there |
+| `/pin` | Pins a constraint for the task ("don't change the public API", `only edit: src/billing/**`). It survives compaction, and path pins are enforced |
+| `/spec` | Writes a short behaviour spec (examples, acceptance criteria, non-goals) for your OK before any code, then builds and checks against it |
+| `/tidy` | Proposes small cleanups for the code you just changed, each tested and committed apart from feature work |
+| `/learn on` | Learning mode: Claude explains concepts, lets you guess a bug's cause first, and leaves small parts for you to write |
 | `/setup` | Re-tunes anything later: "make the guard strict", "add a rule for our GraphQL conventions" |
 
 Claude also picks up `write-tests`, `debug-issue`, `release-notes` and `remember-preference` by itself when they fit, and has four specialist agents: planner, reviewer, security auditor and test writer.
@@ -133,6 +146,12 @@ Claude also picks up `write-tests`, `debug-issue`, `release-notes` and `remember
 - **Guard:** blocks `rm -rf ~`, `curl … | sh`, force-pushes to `main` and writes to `.env` or keys, even when they're hidden in `sh -c`, `eval` or `$(…)`. It asks before `git reset --hard`, `sudo`, `DROP TABLE` and publishing.
 - **Format and lint on every edit** with the tools your project already has (prettier, biome, eslint, ruff, black, gofmt, golangci-lint, rustfmt, clippy, shellcheck). It never downloads anything.
 - **Done gate:** your checks run before Claude finishes a turn that changed files; a failure sends Claude back to fix it.
+- **Dependency check:** before an install, every package is looked up in its registry. Names that don't exist are blocked (AI models invent package names, and attackers register them); packages under 30 days old or barely downloaded need your OK. New imports that no manifest declares are pointed out too.
+- **Test guard:** edits that add `skip` markers, delete test cases, remove assertions or only change an expected value need your OK, so Claude can't make a test pass by weakening it.
+- **Trifecta check:** when MCP servers and permissions give Claude private data, untrusted content *and* a way to send data out (Simon Willison's "lethal trifecta"), you're warned, and outbound commands such as `curl -d` need your OK.
+- **Small-batch nudge:** past 300 uncommitted lines (lockfiles and generated files excluded), you're told to commit the finished part.
+- **Claim check:** if Claude's final reply says "tests pass" or "verified" but no check ran in that turn, it's sent back to run it or correct the claim.
+- **Duplicate hints:** a new function that already exists elsewhere (`formatDate` / `format_date`) is pointed out, so Claude reuses it.
 - **Status line:** `Opus · my-app (main) · $0.42 · guard standard · setup done`.
 
 **Session notices.** At session start you see what needs attention before Claude touches anything:
@@ -146,7 +165,7 @@ Claude also picks up `write-tests`, `debug-issue`, `release-notes` and `remember
 [cct] There's a handoff note from 2026-11-27 18:05 in .claude-handoff.md. Run /handoff resume to pick up where you left off.
 ```
 
-It also flags commands in `CLAUDE.md` that no longer exist, and linters your project configures but you haven't installed.
+It also flags commands in `CLAUDE.md` that no longer exist, linters your project configures but you haven't installed, instruction files for other AI tools that disagree with `AGENTS.md`, and, for teams with Windows, commands, hooks and scripts that won't work there.
 
 ## A day with the kit
 
@@ -157,6 +176,22 @@ It also flags commands in `CLAUDE.md` that no longer exist, and linters your pro
 /commit  →  /pr         → PR opened from your template, test plan filled in
 /handoff                → end of day; tomorrow: /handoff resume
 ```
+
+## Built on research
+
+Several features answer specific findings about AI-assisted coding:
+
+| Finding | What the kit does |
+|---|---|
+| Experienced developers were 19% slower with AI but believed they were 20% faster ([METR](https://metr.org/blog/2025-07-10-early-2025-ai-experienced-os-dev-study/)) | Done gate, claim check and the session cost in the status line replace gut feeling with evidence |
+| Agents disable or delete tests to get a green run ([Kent Beck](https://tidyfirst.substack.com/p/augmented-coding-beyond-the-vibes)) | Test guard |
+| Private data + untrusted content + outbound access enables prompt-injection leaks ([Simon Willison](https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/)) | Trifecta check |
+| Model reliability drops as context grows ([Chroma](https://research.trychroma.com/context-rot)) | `/pin` and `/handoff` keep what matters outside the conversation |
+| Developers who let AI write the code learned less, especially debugging ([Anthropic](https://www.anthropic.com/research/AI-assistance-coding-skills)) | `/learn` |
+| Spec-first workflows give humans and agents one source of truth ([Böckeler, Thoughtworks](https://www.martinfowler.com/articles/exploring-gen-ai/sdd-3-tools.html)) | `/spec` |
+| AI raises delivery speed but lowers stability; small batches help ([DORA 2025](https://services.google.com/fh/files/misc/2025_state_of_ai_assisted_software_development.pdf)) | Small-batch nudge, `/pr` size check |
+| Refactoring fell and copy-paste rose with AI adoption ([GitClear](https://www.gitclear.com/ai_assistant_code_quality_2025_research)) | Duplicate hints, `/tidy` |
+| AI models invent package names that attackers then register ([Socket](https://socket.dev/glossary/slopsquatting), [CSA](https://labs.cloudsecurityalliance.org/research/csa-research-note-slopsquatting-ai-supply-chain-20260419-csa/)) | Dependency check |
 
 ## Your credits, under control
 

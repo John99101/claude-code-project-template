@@ -1,8 +1,9 @@
 {
-  "_about": "MCP servers the setup skill can add to .mcp.json. Copy an entry's 'config' under mcpServers.<name>. Values in ${...} come from the user's environment; never write real tokens. Check the vendor docs for current URLs and packages before adding.",
+  "_about": "MCP servers the setup skill can add to .mcp.json. Copy an entry's 'config' under mcpServers.<name>. Values in ${...} come from the user's environment; never write real tokens. Check the vendor docs for current URLs and packages before adding. 'trifecta' lists which legs of the lethal trifecta a server brings: data (private data), untrusted (content an attacker can write), exfil (a way to send data out).",
   "servers": {
     "github": {
       "for": "Issues, pull requests, code search, Actions",
+      "trifecta": ["data", "untrusted", "exfil"],
       "env": ["GITHUB_PERSONAL_ACCESS_TOKEN"],
       "docs": "https://github.com/github/github-mcp-server",
       "config": {
@@ -13,6 +14,7 @@
     },
     "atlassian": {
       "for": "Jira issues and Confluence pages",
+      "trifecta": ["data", "untrusted", "exfil"],
       "env": [],
       "auth": "OAuth: run /mcp in Claude Code and log in",
       "docs": "https://support.atlassian.com/atlassian-rovo-mcp-server/",
@@ -23,6 +25,7 @@
     },
     "slack": {
       "for": "Search, read and post Slack messages (official Slack-hosted server)",
+      "trifecta": ["data", "untrusted", "exfil"],
       "env": [],
       "auth": "OAuth: run /mcp in Claude Code and log in. Alternative: /plugin install slack@claude-plugins-official",
       "docs": "https://docs.slack.dev/ai/slack-mcp-server/connect-to-harnesses",
@@ -33,6 +36,7 @@
     },
     "postgres": {
       "for": "Query a PostgreSQL database; restricted mode is read-only",
+      "trifecta": ["data"],
       "env": ["DATABASE_URI"],
       "docs": "https://github.com/crystaldba/postgres-mcp",
       "config": {
@@ -43,6 +47,7 @@
     },
     "sqlite": {
       "for": "Query a local SQLite database file",
+      "trifecta": ["data"],
       "env": ["SQLITE_DB_PATH"],
       "docs": "https://github.com/modelcontextprotocol/servers",
       "config": {
@@ -52,6 +57,7 @@
     },
     "playwright": {
       "for": "Drive a browser to test web UIs",
+      "trifecta": ["untrusted", "exfil"],
       "env": [],
       "docs": "https://github.com/microsoft/playwright-mcp",
       "config": {
@@ -61,6 +67,7 @@
     },
     "context7": {
       "for": "Up-to-date library documentation",
+      "trifecta": ["untrusted"],
       "env": [],
       "docs": "https://github.com/upstash/context7",
       "config": {

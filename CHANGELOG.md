@@ -4,6 +4,21 @@ All notable changes to this kit. The format follows [Keep a Changelog](https://k
 
 ## [Unreleased]
 
+### Added
+- **Dependency check against made-up packages.** Before `npm/pnpm/yarn/bun add`, `pip install`, `uv add`, `poetry add`, `pdm add` or `cargo add`, each package is looked up on npm, PyPI or crates.io. Names that don't exist are blocked; packages younger than `dependency_min_age_days` (30) or barely downloaded need your OK. Offline or with a private registry, installs go through. Imports an edit adds that no manifest declares are pointed out to Claude. `"dependency_check": false` turns both off.
+- **Claim check:** a new `Stop` hook sends Claude back once when its final reply claims tests pass, a build works or something was verified, but no check ran in that turn. `"claim_check": false` turns it off.
+- **`/pin`** pins constraints for the task in `.claude-pins.md` (gitignored). They're added back to Claude's context at every session start and after compaction, and `never edit:` / `only edit:` pins are enforced by the file guard.
+- **One instructions file for every AI tool.** When the team also uses Cursor, Copilot, Codex or Gemini, setup makes `AGENTS.md` the shared source, `CLAUDE.md` imports it, and the files in `agent_files` are generated from it (`agent_files.py --write`, `--check` for CI). Session start flags a `CLAUDE.md` that doesn't import an existing `AGENTS.md`, and out-of-date copies. The drift check follows `@` imports.
+- **Portability check** for teams with Windows (`team_platforms`): POSIX-only commands in `CLAUDE.md`, `AGENTS.md` or `done_gate`, hooks with backslash or machine-specific paths, and shell scripts with CRLF or no `.gitattributes` LF rule. Setup asks which systems the team uses.
+- **Duplicate hints:** a function an edit adds that already exists elsewhere, under any casing, is pointed out to Claude. `"duplicate_hints": false` turns it off.
+- **Test guard:** edits to test files that add skip or disable markers, remove test cases or assertions, or only change an expected value need your OK (blocked with `guard_level: strict`); deleting test files with `rm`/`git rm` asks too, and "tests pass" after adding a skip is an unbacked claim. `"test_guard": false` turns it off.
+- **Lethal-trifecta check:** when MCP servers and allowed tools give Claude private data, untrusted content and a way to send data out, session start warns with concrete fixes, and outbound commands (`curl -d`, `gh api` writes, `nc`, `scp` to a host) need your OK. Catalog entries now say which legs they bring. Setup checks before writing `.mcp.json`. `"trifecta_check": false` turns it off.
+- **Small-batch nudge:** a new `Stop` hook says when uncommitted changes pass `batch_max_lines` (300; lockfiles, snapshots and generated files excluded). `"batch_nudge": "claude"` also lets Claude propose a commit point. `batch_check.py --size` gives `/pr` the same count.
+- **`/spec`** writes a behaviour spec with acceptance criteria for your OK before coding, then builds test-first against it. `/pr` repeats the criteria, `/start-issue` offers it for bigger issues, and the drift check flags criteria naming files that are gone (`spec_dir`, default `specs/`).
+- **`/tidy`** proposes small behaviour-preserving cleanups for recently changed code and commits each separately; `/pr` lists them apart.
+- **`/learn`** turns learning mode on or off: Claude explains concepts, lets you guess bugs first and leaves small parts for you. Setup asks about it (with Claude Code's Learning or Explanatory output style).
+- **Review-ready `/pr`:** suggests splitting diffs over `pr_max_lines` (400) or 15 files, and adds a "For the reviewer" section: assumptions, what's untested, and the places to review first.
+
 ## [2.2.1] - 2026-11-27
 
 ### Added

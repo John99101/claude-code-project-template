@@ -4,6 +4,8 @@
 Looks inside nested commands too: `sh -c '…'`, `eval …`, `$(…)`, backticks, `powershell -Command "…"`, `cmd /c …`.
 Knows Windows paths (C:\\, $env:USERPROFILE, /c/ in Git Bash) and PowerShell commands (Remove-Item, Format-Volume…).
 Level comes from cct.json "guard_level": off | standard | strict.
+Also asks before deleting test files (test_guard.py), and, when the setup has all three parts of the lethal trifecta,
+before commands that send data out (trifecta.py).
 This is a safety net, not a sandbox: it catches common accidents, not deliberate obfuscation.
 """
 import os
@@ -12,7 +14,10 @@ import shlex
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from cct_config import decide, defer_to_project, load_config, read_input  # noqa: E402
+from cct_config import decide, defer_to_project, load_config, project_dir, read_input  # noqa: E402
+import drift  # noqa: E402
+import test_guard  # noqa: E402
+import trifecta  # noqa: E402
 
 ALLOW, ASK, DENY = "allow", "ask", "deny"
 RANK = {ALLOW: 0, ASK: 1, DENY: 2}
@@ -279,10 +284,42 @@ def evaluate(cmd, level, kind="bash", depth=0):
     return result
 
 
+def removed_tests(cmd):
+    """A test file that `rm` or `git rm` would delete, or None."""
+    for seg in drift.segments(cmd, posix=True) or []:
+        if seg[:1] == ["sudo"]:
+            seg = seg[1:]
+        if seg[:2] == ["git", "rm"]:
+            args = seg[2:]
+        elif seg[:1] in (["rm"], ["del"], ["Remove-Item"]):
+            args = seg[1:]
+        else:
+            continue
+        for a in args:
+            if not a.startswith("-") and test_guard.is_test_path(a):
+                return a
+    return None
+
+
+def extra_checks(cfg, cmd):
+    """(decision, reason) from the test guard and the trifecta check, or None."""
+    if cfg.get("test_guard", True):
+        gone = removed_tests(cmd)
+        if gone:
+            return ASK, f"cct test guard: this deletes test code ({gone}). If the test is wrong, say why first."
+    if cfg.get("trifecta_check", True):
+        sends = trifecta.outbound(cmd)
+        if sends and trifecta.active(project_dir(), os.path.dirname(os.path.abspath(__file__))):
+            return ASK, (f"cct trifecta check: {sends}, and this setup can also read private data and untrusted "
+                         "content. Make sure nothing private is being sent.")
+    return None
+
+
 def main():
     if defer_to_project(__file__):
         return
-    level = str(load_config().get("guard_level", "standard")).lower()
+    cfg = load_config()
+    level = str(cfg.get("guard_level", "standard")).lower()
     if level == "off":
         return
     data = read_input()
@@ -293,6 +330,9 @@ def main():
     decision, reason = evaluate(cmd, level, kind)
     if decision != ALLOW:
         decide(decision, reason)
+    extra = extra_checks(cfg, cmd)
+    if extra:
+        decide(*extra)
 
 
 if __name__ == "__main__":

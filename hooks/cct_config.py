@@ -23,6 +23,18 @@ DEFAULTS = {
     "env_check": True,              # session start: stale installs, .env keys, runtime versions (no credits)
     "team_notice": True,            # session start: teammates changed CLAUDE.md, .claude/ or .mcp.json (no credits)
     "statusline_cost": True,        # status line shows the session's cost as Claude Code reports it
+    "dependency_check": True,       # installs: package must exist and not be brand new; edits: imports declared
+    "dependency_min_age_days": 30,  # younger packages need the user's OK
+    "claim_check": True,            # "tests pass" in the final reply needs a test command in that turn
+    "duplicate_hints": True,        # a new function that already exists elsewhere is pointed out
+    "agent_files": [],              # other tools' instruction files generated from AGENTS.md: copilot, cursor, gemini
+    "team_platforms": [],           # e.g. ["linux", "macos", "windows"]: with windows, check commands and scripts
+    "pr_max_lines": 400,            # /pr suggests splitting bigger diffs
+    "test_guard": True,             # ask before edits that skip, delete or loosen tests
+    "trifecta_check": True,         # warn about private data + untrusted content + outbound access together
+    "batch_max_lines": 300,         # uncommitted lines before a "commit or split" notice (0: off)
+    "batch_nudge": "user",          # "user": notice only; "claude": Claude is told too (costs a little)
+    "spec_dir": "specs/",           # where /spec writes specs; the drift check looks there
     "done_gate": {"commands": [], "timeout": 120, "attempts": 3},  # checks run before Claude finishes
 }
 STATE_DAYS = 7  # state files untouched for this long are deleted
@@ -30,6 +42,14 @@ STATE_DAYS = 7  # state files untouched for this long are deleted
 
 def project_dir():
     return os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+
+
+def relpath(path, start):
+    """os.path.relpath, or the absolute path when there's no relative one (Windows: another drive)."""
+    try:
+        return os.path.relpath(path, start)
+    except ValueError:
+        return os.path.abspath(path)
 
 
 def home_claude():
@@ -100,11 +120,18 @@ def read_input():
         return {}
 
 
-def notify(*messages):
-    """Show a message to the user only. A hook's systemMessage isn't added to Claude's context, so it costs nothing."""
+def notify(*messages, context=None, event=None):
+    """Show a message to the user only. A hook's systemMessage isn't added to Claude's context, so it costs nothing.
+    `context` (with `event`, e.g. "SessionStart") is added to Claude's context instead; it costs tokens, so only text
+    the user chose to give Claude goes there, such as their pins."""
     text = "\n\n".join(m for m in messages if m)
+    out = {}
     if text:
-        print(json.dumps({"systemMessage": text}))
+        out["systemMessage"] = text
+    if context and event:
+        out["hookSpecificOutput"] = {"hookEventName": event, "additionalContext": context}
+    if out:
+        print(json.dumps(out))
 
 
 # Small JSON state files in ~/.claude/cct-state/, shared by the hooks.

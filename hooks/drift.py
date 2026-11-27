@@ -5,7 +5,8 @@ only, so a command it can't judge (shell variables, workspace filters, package-m
 result goes to the user only, never to Claude, so it uses no credits.
 
 Checked: the done_gate commands in cct.json, and the backticked commands in CLAUDE.md's "Commands" table and
-"Before you say a task is done" section. Turn off with cct.json "drift_check": false.
+"Before you say a task is done" section, including files CLAUDE.md imports with a line like `@AGENTS.md`. Also the
+files named in the acceptance criteria of specs written by /spec ("spec_dir", default specs/). Turn off with cct.json "drift_check": false.
 """
 import json
 import os
@@ -20,6 +21,13 @@ SKIP = {"cd", "export", "env", "sudo", "time", "exec", "source", ".", "echo", "t
 PATH_PREFIX = re.compile(r"^(\.{1,2}[\\/]|/|[A-Za-z]:[\\/])")
 ENV_ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 MAX_SHOWN = 8
+
+
+def _rel(path, start):
+    try:
+        return os.path.relpath(path, start)
+    except ValueError:  # Windows: another drive
+        return os.path.abspath(path)
 
 
 def claude_md(proj):
@@ -125,7 +133,7 @@ def node_problem(runner, args, cwd, proj):
     if runner == "bun" and args[0] == "test":
         return None  # bun has a built-in test runner
     scripts = package_scripts(cwd)
-    rel = os.path.relpath(os.path.join(cwd, "package.json"), proj).replace(os.sep, "/")
+    rel = _rel(os.path.join(cwd, "package.json"), proj).replace(os.sep, "/")
     if scripts is None:
         return f"there's no {rel}"
     if script not in scripts:
@@ -150,7 +158,7 @@ def make_problem(args, cwd, proj):
         i += 1
     names = ("GNUmakefile", "makefile", "Makefile")
     path = next((os.path.join(folder, n) for n in names if os.path.isfile(os.path.join(folder, n))), None)
-    rel = os.path.relpath(folder, proj).replace(os.sep, "/")
+    rel = _rel(folder, proj).replace(os.sep, "/")
     if not path:
         return f"there's no Makefile in {'the project root' if rel == '.' else rel}"
     try:
@@ -226,18 +234,67 @@ def problem(command, proj, posix=None):
     return None
 
 
-def find_drift(cfg, proj):
-    """[(command, where it's written, why it drifted)]."""
+def md_sources(proj):
+    """[(path, display name)]: CLAUDE.md and the Markdown files it imports with `@file.md` lines."""
+    path, rel = claude_md(proj)
+    if not path:
+        agents = os.path.join(proj, "AGENTS.md")
+        return [(agents, "AGENTS.md")] if os.path.isfile(agents) else []
+    sources = [(path, rel)]
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            imports = re.findall(r"^\s*@(\.?/?[\w./-]+\.md)\s*$", f.read(), re.M)
+    except OSError:
+        imports = []
+    for imp in imports[:5]:
+        full = os.path.normpath(os.path.join(os.path.dirname(path), imp))
+        if os.path.isfile(full) and full.startswith(os.path.abspath(proj)):
+            sources.append((full, _rel(full, proj).replace(os.sep, "/")))
+    return sources
+
+
+def commands_to_check(cfg, proj):
+    """[(command, where it's written)] from done_gate and the Markdown instructions."""
     to_check = []
     gate = cfg.get("done_gate")
     if isinstance(gate, dict):
         for c in gate.get("commands") or []:
             if isinstance(c, str) and c.strip():
                 to_check.append((c.strip(), ".claude/cct.json done_gate"))
-    path, rel = claude_md(proj)
-    if path:
+    for path, rel in md_sources(proj):
         to_check += [(c, rel) for c in md_commands(path)]
-    seen, found = set(), []
+    return to_check
+
+
+SPEC_PATH = re.compile(r"`([\w.@-]+(?:/[\w.@-]+)+|[\w-]+\.[A-Za-z]{1,5})`")
+
+
+def spec_problems(cfg, proj):
+    """[(path, spec, why)] for files named in specs' acceptance criteria that no longer exist."""
+    folder = os.path.join(proj, str(cfg.get("spec_dir") or "specs/"))
+    try:
+        names = sorted(n for n in os.listdir(folder) if n.endswith(".md"))
+    except OSError:
+        return []
+    found = []
+    for name in names[:50]:
+        try:
+            with open(os.path.join(folder, name), encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        except OSError:
+            continue
+        m = re.search(r"^##\s+Acceptance criteria\s*$(.*?)(?=^##\s|\Z)", text, re.M | re.S | re.I)
+        rel = _rel(os.path.join(folder, name), proj).replace(os.sep, "/")
+        for path in SPEC_PATH.findall(m.group(1) if m else ""):
+            if not os.path.exists(os.path.join(proj, path)):
+                found.append((path, rel, "the file no longer exists"))
+    return found
+
+
+def find_drift(cfg, proj):
+    """[(command or path, where it's written, why it drifted)]."""
+    to_check = commands_to_check(cfg, proj)
+    seen, found = set(), list(spec_problems(cfg, proj))
     for command, where in to_check:
         if command in seen:
             continue
@@ -252,6 +309,6 @@ def message(found):
     lines = [f"- `{c}` in {where}: {why}" for c, where, why in found[:MAX_SHOWN]]
     if len(found) > MAX_SHOWN:
         lines.append(f"- … and {len(found) - MAX_SHOWN} more")
-    return ("[cct] Some commands in your Claude config no longer match this project:\n" + "\n".join(lines)
+    return ("[cct] Some commands and paths in your Claude config or specs no longer match this project:\n" + "\n".join(lines)
             + "\nFix them in the file, or run /setup to re-tune. Turn this check off with \"drift_check\": false "
               "in .claude/cct.json.")
