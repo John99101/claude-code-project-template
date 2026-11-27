@@ -4,6 +4,11 @@ All notable changes to this kit. The format follows [Keep a Changelog](https://k
 
 ## [Unreleased]
 
+## [2.2.1.2] - 2026-11-27
+
+### Changed
+- **Documentation brought up to date.** The FAQ now says exactly which lookups the hooks make (package names for the dependency check, the opt-in update notice) and how credits are capped. The guide's setup flow and example show the session-start notice and the newer questions, question counts are current, and the hooks table, safety model, testing and troubleshooting sections cover pins, the test guard, the trifecta and the dependency check. The plugin and marketplace descriptions name the new guards and skills.
+
 ## [2.2.1.1] - 2026-11-27
 
 ### Added
@@ -136,7 +141,8 @@ All notable changes to this kit. The format follows [Keep a Changelog](https://k
 - MCP catalog: GitHub, Atlassian (Jira/Confluence), Slack, Postgres, SQLite, Playwright, Context7.
 - Test suite and CI on Linux and macOS.
 
-[Unreleased]: https://github.com/John99101/claude-code-project-template/compare/v2.2.1.1...HEAD
+[Unreleased]: https://github.com/John99101/claude-code-project-template/compare/v2.2.1.2...HEAD
+[2.2.1.2]: https://github.com/John99101/claude-code-project-template/releases/tag/v2.2.1.2
 [2.2.1.1]: https://github.com/John99101/claude-code-project-template/releases/tag/v2.2.1.1
 [2.2.1]: https://github.com/John99101/claude-code-project-template/releases/tag/v2.2.1
 [2.2.0]: https://github.com/John99101/claude-code-project-template/releases/tag/v2.2.0
