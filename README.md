@@ -2,54 +2,66 @@
 
 # Claude Code Project Kit
 
-**A self-configuring setup for [Claude Code](https://docs.claude.com/en/docs/claude-code).**
-Install it into a project or onto your machine, and Claude finishes the configuration for you,
-asking about anything it isn't sure of.
+### Make Claude Code actually know your project, in five minutes.
+
+One command, and Claude reads your repo, asks a few multiple-choice questions, and writes the whole setup for you:
+`CLAUDE.md`, rules, permissions, hooks, skills, agents and MCP servers, all matched to your real stack.
 
 [![CI](https://github.com/John99101/claude-code-project-template/actions/workflows/ci.yml/badge.svg)](https://github.com/John99101/claude-code-project-template/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/John99101/claude-code-project-template)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Claude Code](https://img.shields.io/badge/built%20for-Claude%20Code-D97757)](https://docs.claude.com/en/docs/claude-code)
-[![Python 3](https://img.shields.io/badge/hooks-python%203-3776AB)](.claude/hooks/README.md)
+[![Linux · macOS · Windows](https://img.shields.io/badge/tested%20on-Linux%20·%20macOS%20·%20Windows-555)](.github/workflows/ci.yml)
 [![M8ven Score](https://m8ven.ai/badge/mcp/john99101-claude-code-project-template-1leowc?v=0c6c47e43b32dc4a84be76945ec8ab42)](https://m8ven.ai/mcp/john99101-claude-code-project-template-1leowc?s=readme)
 
-[Quick start](#quick-start) · [What setup looks like](#what-setup-looks-like) · [What's inside](#whats-inside) · [Full guide](docs/GUIDE.md)
+```text
+/plugin install cct --marketplace John99101/claude-code-project-template
+/cct:setup
+```
+
+[Quick start](#quick-start) · [What you get](#what-you-get) · [A day with the kit](#a-day-with-the-kit) · [FAQ](#faq) · [Full guide](docs/GUIDE.md)
 
 </div>
 
 ---
 
-## Why this exists
+## Why
 
-Claude Code is much more useful when it knows your project: how to run the tests, what the conventions are, what it must never touch, and which tools it may use. Claude Code supports all of this through `CLAUDE.md`, rules, settings, hooks, skills, agents and MCP servers. Setting them up by hand for every project is slow, easy to get wrong, and drifts over time.
+Out of the box, Claude Code doesn't know how your tests run, which folders are generated, what your team's commit style is, or that it must never touch `.env`. So it guesses, and you correct it over and over.
 
-This kit gives you:
+Claude Code can learn all of this through `CLAUDE.md`, rules, settings, hooks, skills, agents and MCP. Setting them up by hand takes hours per project, is easy to get wrong, and goes stale. **This kit does it for you, and keeps it current.**
 
-- **A complete, tested structure.** Every part of Claude Code's configuration, organised so each piece loads only when it's needed.
-- **A setup wizard that Claude runs itself.** It reads your project, fills in what it can detect, and asks you short multiple-choice questions about the rest. Monorepos get a brief per package.
-- **Memory across projects.** Your answers are saved, so the next project only asks project-specific questions.
-- **Safety and quality by default.** Hooks block destructive commands and secret-file edits. Lint errors go straight back to Claude to fix, and an optional done gate runs your checks before Claude finishes.
-- **Credits stay in check.** Lint feedback and the done gate make Claude do extra work, so each has a cap: a file stops sending lint problems after 3 reports in a row, and the done gate after 3 tries. Notices (setup reminder, outdated commands, missing tools, new kit version) go to you, not to Claude, so they cost nothing.
+| Without the kit | With the kit |
+|---|---|
+| Claude guesses `npm test` while your repo uses `pnpm vitest` | `CLAUDE.md` lists the real commands, detected from `package.json`, `Makefile` and CI |
+| "Done!" … and the tests fail | The **done gate** runs your checks before Claude finishes, and only the tests related to the change |
+| Lint errors show up in CI an hour later | Every edited file is **formatted and linted**, and problems go straight back to Claude |
+| One `rm -rf` or force-push away from a bad day | A **guard** blocks destructive commands and secret-file edits, and asks before risky ones |
+| A teammate changes the rules and nobody notices | **Session notices** flag teammates' config changes, stale installs, missing `.env` keys and outdated commands |
+| Every new repo starts from zero | Your answers are **remembered**, so the next project only asks what's new |
 
 ## Quick start
 
-**Option 1: plugin** (easiest for personal use). In Claude Code:
+**Plugin** (easiest). In Claude Code:
 
 ```text
 /plugin install cct --marketplace John99101/claude-code-project-template
 ```
 
-Then run **`/cct:setup`** in any project. Updates arrive through `/plugin`, and `/plugin uninstall cct@cct-kit` removes it. On older Claude Code versions, add the marketplace first with `/plugin marketplace add John99101/claude-code-project-template`, then `/plugin install cct@cct-kit`.
+Then run **`/cct:setup`** in any project. Updates arrive through `/plugin`. On older Claude Code versions, add the marketplace first with `/plugin marketplace add John99101/claude-code-project-template`, then `/plugin install cct@cct-kit`.
 
-**Option 2: ask Claude.** In Claude Code, inside your project:
+<details>
+<summary><b>Other ways to install: into one repo for your team, device-wide, or as a new repo</b></summary>
+
+**Ask Claude.** In Claude Code, inside your project:
 
 ```text
 Install github.com/John99101/claude-code-project-template into this project, following its INSTALL.md
 ```
 
-Claude previews the install, applies it, then walks you through setup. This puts the config in the repo, so your team shares it.
+Claude previews the install, applies it, then walks you through setup. The config lives in the repo, so your whole team shares it.
 
-**Option 3: the install script.**
+**Install script.**
 
 ```bash
 git clone --depth 1 https://github.com/John99101/claude-code-project-template /tmp/cct
@@ -57,131 +69,173 @@ python3 /tmp/cct/install.py --project ~/code/my-app   # one project, shared with
 python3 /tmp/cct/install.py --global                  # every project on this device
 ```
 
-On Windows, in PowerShell: `.\install.ps1 --project C:\code\my-app` (or `py -3 install.py …`).
+On Windows, in PowerShell: `.\install.ps1 --project C:\code\my-app` (or `py -3 install.py …`). Add `--dry-run` to preview. Existing files are never overwritten, and `settings.json` is merged with a backup. Then run **`/setup`** in Claude Code (or `/setup --defaults` to skip the questions).
 
-Add `--dry-run` to preview. Existing files are never overwritten; `settings.json` is merged, with a backup. Then open Claude Code and run **`/setup`** (or `/setup --defaults` to skip the questions).
+**New repository.** Click **Use this template**, run `python3 install.py --adopt` once, restart Claude Code and run `/setup`.
 
-**Option 4: new repository.** Click **Use this template** on GitHub. Then run `python3 install.py --adopt` in it once. That turns the copy into a normal install and removes the kit's own tests, CI and docs. Restart Claude Code and run `/setup`.
-
-<details>
-<summary><b>Which option should I pick?</b></summary>
-
-| | Plugin | Project install | Device script |
+| | Plugin | Project install | Device install |
 |---|---|---|---|
-| Commands | `/cct:setup`, `/cct:commit`… | `/setup`, `/commit`… | `/setup`, `/commit`… |
-| Shared with your team | Optional, via `.claude/settings.json` | Yes, committed to git | No |
-| Updates | `/plugin` | `/template-update` (`install.py --update`) | `/template-update` |
-| Status line | Yes, opt-in via `/cct:setup` | Yes | Yes |
-| Clashes with a project install | Never (namespaced) | — | Its skills win over the project's |
+| Commands | `/cct:setup`, `/cct:pr`… | `/setup`, `/pr`… | `/setup`, `/pr`… |
+| Shared with your team | Optional | Yes, committed to git | No |
+| Updates | `/plugin` | `/template-update` | `/template-update` |
+
+`--update` pulls kit updates and keeps your changes; `--uninstall` removes the kit but keeps files you changed.
 
 </details>
 
-Later: `--update` pulls kit updates and keeps your changes, and `--uninstall` removes the kit but keeps files you changed.
-
-> **Requirements:** Claude Code and Python 3.8+. Tested on **Linux, macOS and Windows**. On Windows, install Python with the Python install manager from python.org, which provides the `python3` command ([details](docs/GUIDE.md#windows)).
+> **Requirements:** Claude Code and Python 3.8+ (the hooks use only the standard library). Tested on every push on **Linux, macOS and Windows**.
 
 ## What setup looks like
 
 *Illustrative run on a TypeScript API:*
 
 ```text
-Claude  This project has the Claude Code kit installed, but setup isn't finished. Run /setup now?
-You     yes
+[cct]   The Claude Code kit is installed here, but setup isn't finished. Run /setup to finish it.
+
+You     /setup
 Claude  Found: TypeScript + Fastify, pnpm, Vitest, ESLint + Prettier, Postgres, Conventional Commits.
-        ? How independently should I work?      › Ask before big or risky changes (recommended)
-        ? How should tests be handled?          › Write tests with every change (recommended)
-        ? Connect any tools via MCP?            › GitHub, Postgres
-        ? Safety guard level?                   › Standard (recommended)
+        ? How thorough should setup be?          › Quick (recommended)
+        ? How independently should I work?       › Ask before big or risky changes (recommended)
+        ? What must pass before I say I'm done?  › pnpm lint, pnpm typecheck, pnpm test
+        ? Run those automatically when I finish? › Yes, the fast checks, only related tests
+        ? Connect any tools via MCP?             › GitHub, Postgres
 
         Plan: CLAUDE.md (stack, 7 commands, architecture) · 5 rules + typescript.md
               settings: allow pnpm test/lint/typecheck · .mcp.json: GitHub, Postgres
         Apply? › Apply
 
-Claude  Done. Set GITHUB_PERSONAL_ACCESS_TOKEN and DATABASE_URI, then restart Claude Code.
-        Save your general answers for future projects? › Yes
+Claude  PASS  pnpm lint (2.1 s) · PASS  pnpm typecheck (4.0 s) · PASS  pnpm vitest related (1.3 s)
+        Done. Set GITHUB_PERSONAL_ACCESS_TOKEN and DATABASE_URI, then restart Claude Code.
 ```
 
-See the [full walkthrough](docs/GUIDE.md#6-a-full-example) for the details.
+Quick setup asks about ten questions; Thorough asks about 25. Monorepos get a short brief per package. See the [full walkthrough](docs/GUIDE.md#6-a-full-example).
 
-## What's inside
+## What you get
 
-The repository uses Claude Code's standard plugin layout, so nothing in it lives in `.claude/`. The plugin uses these folders directly; the installer copies them into a project's `.claude/` (shown after the arrow).
+**A project brief Claude reads every session.** `CLAUDE.md` with your stack, real commands, architecture, conventions and a "before you say it's done" checklist. Topic rules (code style, testing, API design, security, git) and language packs for Python, TypeScript, Go, Rust and Java/Kotlin load only for matching files.
 
-| Path | Role |
+**Commands for the whole workflow**
+
+| Command | What it does |
 |---|---|
-| [`templates/CLAUDE.project.md`](templates/CLAUDE.project.md) → `CLAUDE.md` | **Project brief, loaded every session.** Overview, tech stack, commands table, architecture, conventions. Personal overrides go in `CLAUDE.local.md` (git-ignored). |
-| [`rules/`](rules) → `.claude/rules/` | **Conventions by topic:** code style, testing, API design, security, git workflow. Path-scoped rules load only for matching files. |
-| [`rule-packs/`](rule-packs) → `.claude/cct/` | **Ready-made language rules** for Python, TypeScript/JavaScript, Go, Rust and Java/Kotlin. Setup installs the ones your project uses. |
-| [`skills/`](skills) → `.claude/skills/` | **Slash commands and on-demand know-how.** You run `/setup`, `/start-issue`, `/check`, `/review-changes`, `/commit`, `/pr`, `/handoff` and `/template-update`. Claude picks up `remember-preference`, `write-tests`, `debug-issue` and `release-notes` when relevant. |
-| [`agents/`](agents) → `.claude/agents/` | **Specialist subagents** with their own context, tools and model: planner, reviewer, security auditor, test writer. |
-| [`hooks/`](hooks) → `.claude/hooks/` | **Enforced behaviour:** shell-command guard, secret-file protection, format and lint on every edit, an optional done gate that runs your checks (or only the tests related to the change) before Claude finishes, notices for unfinished setup, outdated commands, stale installs and `.env` keys, wrong runtime versions, teammates' config changes, missing tools, a waiting handoff and (opt-in) new kit versions, and a status line with the session's cost. |
-| [`templates/settings.project.json`](templates/settings.project.json) → `.claude/settings.json` | **Permissions, tool access, model, hooks and status line** (hooks and status line are added by the installer). Personal overrides go in `settings.local.json`. |
-| [`templates/mcp.json`](templates/mcp.json) → `.mcp.json` | **External tools** (GitHub, Jira, Slack, databases…), shared via git. Credentials stay in `${ENV_VARS}`. |
-| [`templates/cct.json`](templates/cct.json) → `.claude/cct.json` | **Kit switches:** guard level, format and lint on edit, lockfile protection, never-edit paths, done gate, setup reminder, drift check, update notice. |
+| `/start-issue 123` | Reads the GitHub or GitLab issue, creates a branch in your naming style, finds the code involved and proposes a plan |
+| `/check` | Lint, type check and tests, then fixes what recent changes broke |
+| `/review-changes` | Reviews your diff with a reviewer agent (and a security auditor when it matters) |
+| `/commit` | Commits in your project's message style |
+| `/pr` | Pushes and opens a pull request from your template, with a test plan that ticks only the checks that really ran |
+| `/handoff` | Saves where a task stands, so tomorrow's session (`/handoff resume`) picks up exactly there |
+| `/setup` | Re-tunes anything later: "make the guard strict", "add a rule for our GraphQL conventions" |
+
+Claude also picks up `write-tests`, `debug-issue`, `release-notes` and `remember-preference` by itself when they fit, and has four specialist agents: planner, reviewer, security auditor and test writer.
+
+**Hooks that enforce, not suggest**
+
+- **Guard:** blocks `rm -rf ~`, `curl … | sh`, force-pushes to `main` and writes to `.env` or keys, even when they're hidden in `sh -c`, `eval` or `$(…)`. It asks before `git reset --hard`, `sudo`, `DROP TABLE` and publishing.
+- **Format and lint on every edit** with the tools your project already has (prettier, biome, eslint, ruff, black, gofmt, golangci-lint, rustfmt, clippy, shellcheck). It never downloads anything.
+- **Done gate:** your checks run before Claude finishes a turn that changed files; a failure sends Claude back to fix it.
+- **Status line:** `Opus · my-app (main) · $0.42 · guard standard · setup done`.
+
+**Session notices.** At session start you see what needs attention before Claude touches anything:
+
+```text
+[cct] This machine doesn't quite match the project:
+- pnpm-lock.yaml changed since the last install. Run `pnpm install`.
+- .env is missing STRIPE_KEY (listed in .env.example).
+- Node 20 is required (.nvmrc), but `node` is 18.19.1.
+[cct] Teammates (Alex) changed the Claude config since your last session: .claude/rules/testing.md.
+[cct] There's a handoff note from 2026-11-27 18:05 in .claude-handoff.md. Run /handoff resume to pick up where you left off.
+```
+
+It also flags commands in `CLAUDE.md` that no longer exist, and linters your project configures but you haven't installed.
+
+## A day with the kit
+
+```text
+/start-issue 482        → branch feat/482-rate-limit, plan, your OK
+… Claude works …        → every edit formatted and linted; the done gate runs related tests
+/review-changes         → reviewer and security auditor read the diff
+/commit  →  /pr         → PR opened from your template, test plan filled in
+/handoff                → end of day; tomorrow: /handoff resume
+```
+
+## Your credits, under control
+
+Anything that makes Claude do extra work is capped, and everything that's just information costs nothing:
+
+- **Lint feedback** stops for a file after 3 reports in a row (`lint_max_repeats`), so Claude never loops on a linter it can't satisfy.
+- **The done gate** gives up after 3 tries per turn, and runs only the tests related to the change.
+- **Notices** are shown to you, not sent to Claude, so they use no tokens.
+- **The status line** shows the session's cost as you go.
+
+## FAQ
+
+**Does it work with my stack?** Setup detects Node (npm, pnpm, yarn, bun), Python (uv, poetry, pip), Go, Rust, Java/Kotlin and more, plus monorepos (pnpm, Turborepo, Nx, Cargo and Go workspaces). Anything it can't detect, it asks about.
+
+**Will it overwrite my existing `CLAUDE.md` or settings?** No. Existing files are never overwritten; setup merges into them and asks before dropping anything you wrote. `settings.json` is merged with a backup.
+
+**Can my team share it?** Yes. A project install lives in the repo, so everyone gets the same rules, guard and commands. Personal tweaks go in `CLAUDE.local.md` and `settings.local.json`, which stay out of git.
+
+**Does it work alongside other plugins?** Yes. As a plugin, its commands are namespaced (`/cct:…`). See [using it with other plugins](docs/GUIDE.md#10-using-the-kit-with-other-plugins-eg-ecc).
+
+**Does it update itself?** No, on purpose: the hooks run code on your machine, so new code only arrives when you choose. Plugin installs update through `/plugin`. Script installs use `/template-update` and can opt in to a weekly "new version" notice.
+
+**Can I turn things off?** Every hook has a switch in `.claude/cct.json`. See the [configuration reference](docs/GUIDE.md#8-configuration-reference).
+
+## How it's tested
+
+| Check | When |
+|---|---|
+| [Test suite](tests/test_kit.py): every hook, the installer, updates, uninstall, the plugin and file formats | Every push, on Linux, macOS and Windows |
+| [Setup eval](tests/eval_setup.py) runs `/setup` for real on four sample projects; the [question eval](tests/eval_questions.py) checks the questions it would ask | Weekly on GitHub, or any time locally ([how](docs/GUIDE.md#running-the-setup-eval)) |
+| [MCP catalog check](scripts/check_mcp_catalog.py): every server URL and package still exists | Weekly; opens an issue if something breaks |
 
 <details>
-<summary><b>Full file tree</b></summary>
+<summary><b>Repository layout</b></summary>
+
+The repository uses Claude Code's standard plugin layout. The plugin uses these folders directly; the installer copies them into a project's `.claude/`.
 
 ```text
 .
-├── .claude-plugin/               # plugin manifest, marketplace entry, icon
-├── skills/                       # setup (+ questions, MCP catalog), check, review-changes, commit,
-│                                 # pr, start-issue, handoff, template-update, remember-preference, write-tests, debug-issue, release-notes
-├── agents/                       # planner, reviewer, security-auditor, test-writer
-├── hooks/                        # hooks.json + session_start, guard_bash, protect_files, format_file, statusline
-├── rules/                        # code-style, testing, api-design, security, git-workflow
-├── rule-packs/                   # python, typescript, go, rust, java
-├── templates/                    # CLAUDE.md templates, base settings, cct.json, mcp.json, examples
-├── install.py                    # install, update, adopt, uninstall (Linux, macOS, Windows)
-├── install.sh, install.ps1       # launchers that find Python and run install.py
-├── scripts/                      # settings merger, status line helper, MCP catalog check, changelog tool
-├── tests/                        # test suite, setup eval, sample projects
-└── docs/GUIDE.md                 # in-depth guide
+├── .claude-plugin/        # plugin manifest, marketplace entry, icon
+├── skills/                # setup, start-issue, check, review-changes, commit, pr, handoff, template-update,
+│                          # remember-preference, write-tests, debug-issue, release-notes
+├── agents/                # planner, reviewer, security-auditor, test-writer
+├── hooks/                 # guard, file protection, format and lint, done gate, session notices, status line
+├── rules/                 # code-style, testing, api-design, security, git-workflow
+├── rule-packs/            # python, typescript, go, rust, java
+├── templates/             # CLAUDE.md templates, settings, cct.json, mcp.json
+├── install.py             # install, update, adopt, uninstall (+ install.sh / install.ps1 launchers)
+├── scripts/  tests/       # helpers, test suite, setup eval, sample projects
+└── docs/GUIDE.md          # the in-depth guide
 ```
 
 What a project gets after `install.py --project`:
 
 ```text
 my-app/
-├── CLAUDE.md                     # project brief, filled in by /setup
-├── CLAUDE.local.md.example       # personal overrides example
-├── .mcp.json                     # MCP servers (filled by /setup)
+├── CLAUDE.md              # project brief, filled in by /setup
+├── .mcp.json              # MCP servers
 └── .claude/
-    ├── settings.json             # permissions, hooks, status line
-    ├── cct.json                  # kit switches
+    ├── settings.json      # permissions, hooks, status line
+    ├── cct.json           # kit switches
     ├── rules/  skills/  agents/  hooks/
-    └── cct/                      # rule packs, package template, install manifest
+    └── cct/               # rule packs, package template, install manifest
 ```
 
 </details>
 
-## Safety
-
-| | Examples |
-|---|---|
-| **Blocked** | `rm -rf /` or `~` (also inside `sh -c`, `eval`, `$(…)`), `find / -delete`, `mkfs`, `curl … \| sh`, force-pushing or deleting `main`, editing `.env` or private keys |
-| **Asks first** | `rm -r`, `find … -delete`, `git reset --hard`, `sudo`, `DROP TABLE`, publishing packages, editing lockfiles or CI |
-
-Set `guard_level` to `strict` to also confirm pushes, new dependencies and any deletes. Details are in the [safety model](docs/GUIDE.md#7-the-safety-model).
-
-## Quality checks
-
-| Check | When |
-|---|---|
-| [Test suite](tests/test_kit.py): hooks (Bash and PowerShell), installer, update, uninstall, plugin, file formats | Every push, on Linux, macOS and Windows |
-| [Setup eval](tests/eval_setup.py): runs `/setup` for real on four sample projects, and [question eval](tests/eval_questions.py): checks the questions it would ask | Any time on your machine with your Claude subscription (`python3 tests/eval_setup.py`); weekly on GitHub with a `claude setup-token` secret ([how](docs/GUIDE.md#running-the-setup-eval)) |
-| [MCP catalog check](scripts/check_mcp_catalog.py): every server URL and package still exists | Weekly; opens an issue if something breaks |
-
 ## Documentation
 
-- **[Guide](docs/GUIDE.md):** why each part exists, the setup flow, configuration, using it with other plugins, troubleshooting, FAQ
+- **[Guide](docs/GUIDE.md):** how each part works, the setup flow, safety model, configuration, troubleshooting
+- **[Hooks](hooks/README.md):** what each hook does and how to add your own
 - **[INSTALL.md](INSTALL.md):** install instructions written for Claude
-- **[Hooks](.claude/hooks/README.md):** what each hook does and how to add your own
 - **[Changelog](CHANGELOG.md)**
 
 ## Contributing
 
-Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). Run the tests with `python3 tests/test_kit.py -v`.
+Issues and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). Run the tests with `python3 tests/test_kit.py -v`.
+
+If the kit saves you time, a ⭐ helps other developers find it.
 
 ## License
 
