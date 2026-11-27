@@ -14,6 +14,10 @@ One command, and Claude reads your repo, asks a few multiple-choice questions, a
 [![Linux · macOS · Windows](https://img.shields.io/badge/tested%20on-Linux%20·%20macOS%20·%20Windows-555)](.github/workflows/ci.yml)
 [![M8ven Score](https://m8ven.ai/badge/mcp/john99101-claude-code-project-template-1leowc?v=0c6c47e43b32dc4a84be76945ec8ab42)](https://m8ven.ai/mcp/john99101-claude-code-project-template-1leowc?s=readme)
 
+<img src=".github/demo/demo.gif" alt="Setup in one command, then the kit blocks a made-up npm package, asks before a test is skipped, and sends Claude back when it claims tests pass without running them" width="800">
+
+<sub>Illustrative session. Every message from the kit in it is the hooks' real output.</sub>
+
 ```text
 /plugin install cct --marketplace John99101/claude-code-project-template
 /cct:setup

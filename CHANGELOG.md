@@ -4,6 +4,9 @@ All notable changes to this kit. The format follows [Keep a Changelog](https://k
 
 ## [Unreleased]
 
+### Added
+- **Demo GIF** at the top of the README: setup, then a made-up package blocked, a skipped test caught and an unverified "tests pass" sent back. `.github/demo/make_demo.py` redraws it from the hooks' real output (needs Pillow; maintainers only). `--adopt` removes the folder from "Use this template" copies.
+
 ## [2.2.1.2] - 2026-11-27
 
 ### Changed
