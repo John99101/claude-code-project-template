@@ -4,6 +4,8 @@ All notable changes to this kit. The format follows [Keep a Changelog](https://k
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-11-27
+
 ### Added
 - **`/pr`** pushes the branch and opens a pull request (GitLab: merge request) from the repo's PR template, with a summary, linked issues and a test plan that ticks only checks that actually ran. It shows the draft first and never merges.
 - **`/start-issue <n>`** reads a GitHub or GitLab issue, creates a branch in house style, finds the code involved and shows a plan, then waits for your OK.
@@ -112,7 +114,8 @@ All notable changes to this kit. The format follows [Keep a Changelog](https://k
 - MCP catalog: GitHub, Atlassian (Jira/Confluence), Slack, Postgres, SQLite, Playwright, Context7.
 - Test suite and CI on Linux and macOS.
 
-[Unreleased]: https://github.com/John99101/claude-code-project-template/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/John99101/claude-code-project-template/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/John99101/claude-code-project-template/releases/tag/v2.2.0
 [2.1.0]: https://github.com/John99101/claude-code-project-template/releases/tag/v2.1.0
 [2.0.0]: https://github.com/John99101/claude-code-project-template/releases/tag/v2.0.0
 [1.2.0]: https://github.com/John99101/claude-code-project-template/releases/tag/v1.2.0
